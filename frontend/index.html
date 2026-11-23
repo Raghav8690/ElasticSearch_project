@@ -5,36 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
   <title>Gujrat RERA Explorer</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=2" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="brand">
-      <div class="brand-mark">GR</div>
-      <div class="brand-text">
-        <h1>Gujrat RERA Explorer</h1>
-        <p class="brand-sub">Read-only Elasticsearch teaching demo</p>
+  <div class="site-header-wrap">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark">GR</div>
+        <div class="brand-text">
+          <h1>Gujrat RERA Explorer</h1>
+          <p class="brand-sub">Read-only Elasticsearch teaching demo</p>
+        </div>
       </div>
-    </div>
-    <div class="header-meta">
-      <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
-      <span class="pill pill-status is-unknown" id="cluster-pill">
-        <span class="dot"></span><span class="pill-label">checking…</span>
-      </span>
-    </div>
-  </header>
+      <div class="header-meta">
+        <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
+        <span class="pill pill-status is-unknown" id="cluster-pill">
+          <span class="dot"></span><span class="pill-label">checking…</span>
+        </span>
+      </div>
+    </header>
 
-  <nav class="tabs" id="tabs" aria-label="Sections">
-    <button class="tab is-active" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="projects">Projects</button>
-    <button class="tab" data-tab="detail">Project Detail</button>
-    <button class="tab" data-tab="analytics">Analytics</button>
-    <button class="tab" data-tab="quality">Data Quality</button>
-    <button class="tab" data-tab="pagination">Pagination &amp; Export</button>
-    <button class="tab" data-tab="mapping">Mapping &amp; Indices</button>
-    <button class="tab" data-tab="ops">Ops</button>
-    <button class="tab" data-tab="console">Console</button>
-  </nav>
+    <nav class="tabs" id="tabs" aria-label="Sections">
+      <button class="tab is-active" data-tab="dashboard">Dashboard</button>
+      <button class="tab" data-tab="projects">Projects</button>
+      <button class="tab" data-tab="detail">Project Detail</button>
+      <button class="tab" data-tab="analytics">Analytics</button>
+      <button class="tab" data-tab="quality">Data Quality</button>
+      <button class="tab" data-tab="pagination">Pagination &amp; Export</button>
+      <button class="tab" data-tab="mapping">Mapping &amp; Indices</button>
+      <button class="tab" data-tab="ops">Ops</button>
+      <button class="tab" data-tab="console">Console</button>
+    </nav>
+  </div>
 
   <main id="main">
     <section class="panel is-active" data-panel="dashboard">
@@ -341,6 +343,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2"></script>
 </body>
 </html>

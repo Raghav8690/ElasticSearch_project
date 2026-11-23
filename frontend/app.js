@@ -790,7 +790,23 @@ function openDetail(projectId) {
 }
 
 /* ---------- analytics (Chart.js with table fallback) ---------- */
-const CHART_PALETTE = ["#4f8cff", "#38d6b0", "#f4b740", "#ef6b8a", "#a78bfa", "#31c3e6", "#f97316", "#84cc16", "#e879f9", "#64748b"];
+function cssVar(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+const CHART_PALETTE = [
+  ["--accent", "#60a5fa"],
+  ["--green", "#4ade80"],
+  ["--yellow", "#fde047"],
+  ["--red", "#fb7185"],
+  ["--purple", "#c084fc"],
+  ["--cyan", "#38bdf8"],
+  ["--orange", "#fb923c"],
+  ["--lime", "#a3e635"],
+  ["--pink", "#e879f9"],
+  ["--text-faint", "#94a3b8"],
+].map(([name, fallback]) => cssVar(name, fallback));
 let analyticsLoaded = false;
 let chartInstances = [];
 let pendingCharts = [];
@@ -822,17 +838,27 @@ function chartConfig(labels, values, opts = {}) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
-      plugins: { legend: { display: false }, tooltip: { intersect: false } },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          intersect: false,
+          backgroundColor: cssVar("--bg-elev", "#0e1223"),
+          borderColor: cssVar("--border", "#64748b"),
+          borderWidth: 1,
+          titleColor: cssVar("--text", "#f8fafc"),
+          bodyColor: cssVar("--text-dim", "#cbd5e1"),
+        },
+      },
       scales: {
         x: {
           beginAtZero: true,
-          ticks: { color: "#9aa8c7", maxRotation: 45, minRotation: 0, autoSkip: true },
-          grid: { color: "rgba(36,48,79,.45)" },
+          ticks: { color: cssVar("--text-dim", "#cbd5e1"), maxRotation: 45, minRotation: 0, autoSkip: true },
+          grid: { color: cssVar("--chart-grid", "rgba(51, 65, 85, 0.7)") },
         },
         y: {
           beginAtZero: true,
-          ticks: { color: "#9aa8c7", autoSkip: true },
-          grid: { color: "rgba(36,48,79,.45)" },
+          ticks: { color: cssVar("--text-dim", "#cbd5e1"), autoSkip: true },
+          grid: { color: cssVar("--chart-grid", "rgba(51, 65, 85, 0.7)") },
         },
       },
     },
