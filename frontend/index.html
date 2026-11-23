@@ -193,16 +193,146 @@
       </div>
     </section>
     <section class="panel" data-panel="pagination">
-      <div class="placeholder" data-placeholder="pagination">Pagination &amp; Export arrive in Phase 4.</div>
+      <div class="panel-head">
+        <div>
+          <h2>Pagination &amp; Export</h2>
+          <p>Compare <code>from/size</code>, <code>search_after</code>, and Point-in-Time paging. Stream CSV exports.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost" type="button" id="pagination-refresh">Refresh</button>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Page N (from / size)</h3></div>
+            <div class="head-actions" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
+              <label>Page <input id="pag-page" type="number" value="1" min="1" style="width:70px" /></label>
+              <label>Size <select id="pag-size"><option>20</option><option>50</option><option>100</option></select></label>
+              <button class="btn btn-primary" id="pag-go" type="button">Go</button>
+            </div>
+            <div id="pag-from-results"></div>
+            <div id="pag-from-query"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Cursor (search_after)</h3></div>
+            <div class="head-actions" style="margin-bottom:12px;gap:8px">
+              <button class="btn btn-primary" id="pag-next" type="button">Next 100</button>
+              <button class="btn btn-ghost" id="pag-cursor-reset" type="button">Reset cursor</button>
+            </div>
+            <div id="pag-cursor-info" class="muted small" style="margin-bottom:10px"></div>
+            <div id="pag-cursor-results"></div>
+            <div id="pag-cursor-query"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Point-in-Time (PIT) Session</h3></div>
+          <p class="muted small" style="margin-bottom:10px">Opens a stateful point-in-time context with server-side TTL tracking.</p>
+          <div class="head-actions" style="margin-bottom:12px;gap:8px">
+            <button class="btn btn-primary" id="pit-open" type="button">Open PIT</button>
+            <button class="btn btn-ghost" id="pit-next" type="button">Next (PIT)</button>
+            <button class="btn btn-ghost" id="pit-close" type="button">Close PIT</button>
+          </div>
+          <div id="pit-info" class="muted small" style="margin-bottom:10px"></div>
+          <div id="pit-results"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>CSV Export</h3></div>
+          <p class="muted small">Streams all projects as CSV using a dedicated PIT + search_after. Memory bounded, formula-safe cells.</p>
+          <div class="head-actions" style="margin-top:12px;gap:8px;align-items:center">
+            <label>Limit <input id="export-limit" type="number" value="17271" min="1" max="100000" style="width:110px" /></label>
+            <a class="btn btn-primary" id="export-link" href="/api/projects/export?limit=17271" target="_blank" download="gujrat_rera_projects.csv">Export CSV</a>
+          </div>
+        </div>
+      </div>
     </section>
+
     <section class="panel" data-panel="mapping">
-      <div class="placeholder" data-placeholder="mapping">Mapping &amp; Indices arrive in Phase 5.</div>
+      <div class="panel-head">
+        <div>
+          <h2>Mapping &amp; Indices</h2>
+          <p>Live mapping with indexed / not-indexed markers, stats, aliases, and analyzer tool.</p>
+        </div>
+        <button class="btn btn-ghost" type="button" id="mapping-refresh">Refresh</button>
+      </div>
+      <div class="stack">
+        <div id="mapping-stats"></div>
+        <div id="mapping-fields"></div>
+        <div class="grid-2">
+          <div id="mapping-aliases"></div>
+          <div id="mapping-explain"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Analyzer Tool (POST /_analyze)</h3></div>
+          <p class="muted small" style="margin-bottom:10px">Test Elasticsearch tokenization against text fields or built-in analyzers.</p>
+          <div class="head-actions" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
+            <input id="analyze-text" type="text" value="Shivalik Residences Ahmedabad" placeholder="Text to analyze" style="flex:1;min-width:200px" />
+            <select id="analyze-field" style="width:160px">
+              <option value="">Standard analyzer</option>
+              <option value="project_name">project_name (text)</option>
+              <option value="project_name.keyword">project_name.keyword</option>
+              <option value="promoter_name">promoter_name (text)</option>
+            </select>
+            <button class="btn btn-primary" id="analyze-run" type="button">Analyze</button>
+          </div>
+          <div id="analyze-output"></div>
+        </div>
+        <div id="mapping-query"></div>
+      </div>
     </section>
+
     <section class="panel" data-panel="ops">
-      <div class="placeholder" data-placeholder="ops">Ops arrives in Phase 5.</div>
+      <div class="panel-head">
+        <div>
+          <h2>Ops</h2>
+          <p>Cluster health, node metrics, shard allocation, and the P13 administrative runbook.</p>
+        </div>
+        <button class="btn btn-ghost" type="button" id="ops-refresh">Refresh</button>
+      </div>
+      <div class="stack">
+        <div id="ops-health"></div>
+        <div id="ops-nodes"></div>
+        <div id="ops-shards"></div>
+        <div class="card note">
+          <div class="card-head"><h3>P13 Administrative Runbook (Documented Only)</h3></div>
+          <p>The following operations require cluster admin privileges and are intentionally not exposed by this read-only application:</p>
+          <ul style="color:var(--text-dim);font-size:13px;margin:10px 0 0 18px;line-height:1.6">
+            <li><strong>Security &amp; Users:</strong> Create / manage native users, roles, and role mappings (e.g. <code>POST /_security/user/...</code>).</li>
+            <li><strong>API Keys:</strong> Generate, invalidate, and rotate cluster/index API keys (<code>POST /_security/api_key</code>).</li>
+            <li><strong>Slow Logs:</strong> Adjust index search and indexing slow-log thresholds via <code>PUT /{index}/_settings</code>.</li>
+            <li><strong>Snapshots:</strong> Register snapshot repositories (S3 / shared filesystem), trigger snapshots, and restore indices.</li>
+            <li><strong>Replication &amp; Routing:</strong> Change <code>index.number_of_replicas</code> to 0 to turn a single-node cluster green, or assign replicas across multiple nodes.</li>
+          </ul>
+        </div>
+      </div>
     </section>
+
     <section class="panel" data-panel="console">
-      <div class="placeholder" data-placeholder="console">The guarded console arrives in Phase 5.</div>
+      <div class="panel-head">
+        <div>
+          <h2>Guarded Query Console</h2>
+          <p>Run Query DSL against <code>gujrat_rera_data</code>. Scripts, regexp, leading wildcards, and write calls are blocked.</p>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="card">
+          <div class="card-head">
+            <h3>Query DSL</h3>
+            <span class="tag tag-muted">index: gujrat_rera_data</span>
+          </div>
+          <textarea id="console-input" class="code-input" rows="12" spellcheck="false">{
+  "query": { "match": { "project_name": "residency" } },
+  "size": 5,
+  "_source": ["projectId", "project_name", "district", "project_status"]
+}</textarea>
+          <div class="head-actions" style="margin-top:10px">
+            <button class="btn btn-primary" id="console-run" type="button">Run Query</button>
+          </div>
+        </div>
+        <div id="console-meta" class="result-meta"></div>
+        <div id="console-results"></div>
+        <div id="console-query"></div>
+      </div>
     </section>
   </main>
 

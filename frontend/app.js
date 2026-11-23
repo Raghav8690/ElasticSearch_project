@@ -1196,6 +1196,537 @@ async function runPipeline() {
   }
 }
 
+/* ---------- pagination & export ---------- */
+let pagCursor = null;
+let pitSessionId = null;
+let pitCursor = null;
+let paginationLoaded = false;
+
+function pagTable(hits) {
+  if (!hits || !hits.length) return h("div", { class: "placeholder", text: "No results." });
+  const cols = ["ID", "Project", "District", "Type", "Status", "Price"];
+  return h(
+    "div",
+    { class: "table-wrap" },
+    h(
+      "table",
+      { class: "data-table compact" },
+      h("thead", {}, h("tr", {}, ...cols.map((c) => h("th", { text: c })))),
+      h(
+        "tbody",
+        {},
+        ...hits.map((hit) =>
+          h(
+            "tr",
+            {},
+            h("td", {}, h("span", { class: "mono", text: String(hit.projectId || hit._id || "—") })),
+            h("td", { text: hit.project_name || "—" }),
+            h("td", { text: hit.district || "—" }),
+            h("td", { text: hit.project_type || "—" }),
+            h("td", { text: hit.project_status || "—" }),
+            h("td", { text: hit.price || "—" })
+          )
+        )
+      )
+    )
+  );
+}
+
+async function pagFromSize() {
+  const pageInput = document.getElementById("pag-page");
+  const sizeInput = document.getElementById("pag-size");
+  const page = parseInt(pageInput ? pageInput.value : "1", 10) || 1;
+  const size = parseInt(sizeInput ? sizeInput.value : "20", 10) || 20;
+  const results = document.getElementById("pag-from-results");
+  const queryEl = document.getElementById("pag-from-query");
+  if (!results) return;
+  results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  try {
+    const res = await API.get("/api/projects/page", { page, size });
+    const data = res.data || {};
+    const meta = res.meta || {};
+    results.replaceChildren(
+      h("p", {
+        class: "muted small",
+        style: "margin-bottom:8px",
+        text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
+      }),
+      pagTable(data.hits)
+    );
+    if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "Page query"));
+  } catch (err) {
+    results.replaceChildren(errorCard("Page failed", err));
+  }
+}
+
+async function pagSearchAfter() {
+  const results = document.getElementById("pag-cursor-results");
+  const info = document.getElementById("pag-cursor-info");
+  const queryEl = document.getElementById("pag-cursor-query");
+  if (!results) return;
+  results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  try {
+    const params = { size: 100 };
+    if (pagCursor) params.cursor = JSON.stringify(pagCursor);
+    const res = await API.get("/api/projects/search-after", params);
+    const data = res.data || {};
+    const meta = res.meta || {};
+    pagCursor = data.next_cursor;
+    if (info) {
+      info.textContent = `cursor=${JSON.stringify(pagCursor)} has_more=${data.has_more} mode=${data.mode} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
+    }
+    results.replaceChildren(pagTable(data.hits));
+    if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "search_after query"));
+  } catch (err) {
+    results.replaceChildren(errorCard("search_after failed", err));
+  }
+}
+
+async function pitOpen() {
+  const info = document.getElementById("pit-info");
+  if (info) info.textContent = "Opening PIT session…";
+  try {
+    const res = await API.post("/api/pit");
+    const data = res.data || {};
+    pitSessionId = data.session_id;
+    pitCursor = null;
+    if (info) {
+      info.textContent = `PIT opened: session=${pitSessionId} keep_alive=${data.keep_alive} expires_in=${data.expires_in_seconds}s`;
+    }
+  } catch (err) {
+    if (info) info.textContent = `PIT open failed: ${err.message}`;
+  }
+}
+
+async function pitNext() {
+  const results = document.getElementById("pit-results");
+  const info = document.getElementById("pit-info");
+  if (!pitSessionId) {
+    if (info) info.textContent = "No PIT session open. Click 'Open PIT' first.";
+    return;
+  }
+  if (results) results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  try {
+    const params = { size: 100, session: pitSessionId, pit: true };
+    if (pitCursor) params.cursor = JSON.stringify(pitCursor);
+    const res = await API.get("/api/projects/search-after", params);
+    const data = res.data || {};
+    const meta = res.meta || {};
+    pitCursor = data.next_cursor;
+    if (info) {
+      info.textContent = `PIT session=${pitSessionId} cursor=${JSON.stringify(pitCursor)} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
+    }
+    if (results) results.replaceChildren(pagTable(data.hits));
+  } catch (err) {
+    if (results) results.replaceChildren(errorCard("PIT search failed", err));
+  }
+}
+
+async function pitClose() {
+  const info = document.getElementById("pit-info");
+  if (!pitSessionId) {
+    if (info) info.textContent = "No PIT session to close.";
+    return;
+  }
+  try {
+    await API.request(`/api/pit/${pitSessionId}`, { method: "DELETE" });
+    if (info) info.textContent = `PIT session ${pitSessionId} closed.`;
+    pitSessionId = null;
+    pitCursor = null;
+  } catch (err) {
+    if (info) info.textContent = `PIT close failed: ${err.message}`;
+  }
+}
+
+function updateExportLink() {
+  const link = document.getElementById("export-link");
+  const limitInput = document.getElementById("export-limit");
+  const limit = (limitInput && limitInput.value) || "17271";
+  if (link) link.href = `/api/projects/export?limit=${encodeURIComponent(limit)}`;
+}
+
+function ensurePagination() {
+  if (paginationLoaded) return;
+  paginationLoaded = true;
+  pagFromSize();
+  updateExportLink();
+}
+
+/* ---------- mapping & indices ---------- */
+let mappingLoaded = false;
+
+async function runAnalyze() {
+  const textInput = document.getElementById("analyze-text");
+  const fieldSelect = document.getElementById("analyze-field");
+  const out = document.getElementById("analyze-output");
+  if (!out) return;
+  const text = (textInput && textInput.value.trim()) || "";
+  if (!text) {
+    out.replaceChildren(h("p", { class: "muted small", text: "Enter text to analyze." }));
+    return;
+  }
+  const fieldVal = (fieldSelect && fieldSelect.value) || "";
+  const payload = { text };
+  if (fieldVal) {
+    payload.field = fieldVal;
+  } else {
+    payload.analyzer = "standard";
+  }
+  out.replaceChildren(h("div", { class: "loading", text: "Analyzing…" }));
+  try {
+    const res = await API.post("/api/analyze", payload);
+    const tokens = (res.data && res.data.tokens) || [];
+    out.replaceChildren(
+      h(
+        "div",
+        { class: "table-wrap", style: "margin-top:8px" },
+        h(
+          "table",
+          { class: "data-table compact" },
+          h("thead", {}, h("tr", {}, h("th", { text: "Token" }), h("th", { text: "Start" }), h("th", { text: "End" }), h("th", { text: "Position" }), h("th", { text: "Type" }))),
+          h(
+            "tbody",
+            {},
+            ...tokens.map((t) =>
+              h(
+                "tr",
+                {},
+                h("td", {}, h("strong", { text: t.token })),
+                h("td", { text: String(t.start_offset) }),
+                h("td", { text: String(t.end_offset) }),
+                h("td", { text: String(t.position) }),
+                h("td", { text: t.type || "word" })
+              )
+            )
+          )
+        )
+      ),
+      queryDetails((res.meta || {}).query_used, "Analyze query")
+    );
+  } catch (err) {
+    out.replaceChildren(errorCard("Analyze failed", err));
+  }
+}
+
+async function loadMapping(force = false) {
+  if (mappingLoaded && !force) return;
+  const statsEl = document.getElementById("mapping-stats");
+  const fieldsEl = document.getElementById("mapping-fields");
+  const aliasesEl = document.getElementById("mapping-aliases");
+  const explainEl = document.getElementById("mapping-explain");
+  const queryEl = document.getElementById("mapping-query");
+  if (statsEl) statsEl.replaceChildren(h("div", { class: "loading", text: "Loading mapping & stats…" }));
+
+  const index = "gujrat_rera_data";
+  const [mappingRes, statsRes, aliasesRes] = await Promise.allSettled([
+    API.get(`/api/indices/${index}/mapping`),
+    API.get(`/api/indices/${index}/stats`),
+    API.get(`/api/indices/${index}/aliases`),
+  ]);
+
+  if (statsEl) {
+    if (statsRes.status === "fulfilled") {
+      const sd = statsRes.value.data || {};
+      statsEl.replaceChildren(
+        h(
+          "div",
+          { class: "kpi-grid" },
+          kpi("Documents", fmtNumber(sd.docs), "", "total primary count"),
+          kpi("Store", sd.store_bytes != null ? `${(sd.store_bytes / 1048576).toFixed(1)} MB` : "—", "", "storage size"),
+          kpi("Segments", fmtNumber(sd.segments), "", "searchable segments"),
+          kpi("Total queries", fmtNumber(sd.search && sd.search.query_total), "", "search queries executed")
+        )
+      );
+    } else {
+      statsEl.replaceChildren(errorCard("Stats unavailable", statsRes.reason));
+    }
+  }
+
+  if (fieldsEl) {
+    if (mappingRes.status === "fulfilled") {
+      const md = mappingRes.value.data || {};
+      const fields = md.fields || [];
+      const meta = mappingRes.value.meta || {};
+      fieldsEl.replaceChildren(
+        h(
+          "div",
+          { class: "card" },
+          h(
+            "div",
+            { class: "card-head" },
+            h("h3", { text: `Mapping Fields (dynamic: ${md.dynamic ?? "false"})` }),
+            h("span", { class: "tag tag-muted", text: `${fields.length} fields` })
+          ),
+          h(
+            "div",
+            { class: "table-wrap" },
+            h(
+              "table",
+              { class: "data-table compact" },
+              h(
+                "thead",
+                {},
+                h("tr", {}, h("th", { text: "Field name" }), h("th", { text: "Type" }), h("th", { text: "Indexed" }), h("th", { text: "Enabled" }))
+              ),
+              h(
+                "tbody",
+                {},
+                ...fields.map((f) =>
+                  h(
+                    "tr",
+                    { class: f.indexed ? "" : "row-disabled" },
+                    h("td", {}, h("code", { text: f.field })),
+                    h("td", { text: f.type || "object" }),
+                    h("td", { text: f.indexed ? "✓ true" : "✗ false (stored only)" }),
+                    h("td", { text: f.enabled !== false ? "✓ true" : "✗ false" })
+                  )
+                )
+              )
+            )
+          ),
+          h("p", { class: "muted small", style: "margin-top:8px", text: `Indexed fields are queryable; non-indexed objects exist only in _source · wall_ms ${meta.wall_ms ?? "—"}` })
+        )
+      );
+    } else {
+      fieldsEl.replaceChildren(errorCard("Mapping unavailable", mappingRes.reason));
+    }
+  }
+
+  if (aliasesEl) {
+    if (aliasesRes.status === "fulfilled") {
+      const ad = aliasesRes.value.data || {};
+      aliasesEl.replaceChildren(
+        h(
+          "div",
+          { class: "card" },
+          h("div", { class: "card-head" }, h("h3", { text: "Aliases" }), h("span", { class: "tag tag-muted", text: `${ad.count || 0} alias(es)` })),
+          ad.count
+            ? h("pre", { text: JSON.stringify(ad.aliases, null, 2) })
+            : h("p", { class: "muted small", text: "No aliases configured for gujrat_rera_data." })
+        )
+      );
+    } else {
+      aliasesEl.replaceChildren(errorCard("Aliases unavailable", aliasesRes.reason));
+    }
+  }
+
+  if (explainEl) {
+    explainEl.replaceChildren(
+      h(
+        "div",
+        { class: "card note" },
+        h("div", { class: "card-head" }, h("h3", { text: "Single Shard + Replica Architecture" })),
+        h("p", {
+          text:
+            "This index defines 1 primary shard and 1 replica. In a single-node cluster (rajiv-omen), " +
+            "the replica cannot be assigned to another node. The primary shard is ACTIVE, and the replica is UNASSIGNED. " +
+            "This keeps the index health YELLOW as an intentional operational lesson.",
+        })
+      )
+    );
+  }
+
+  if (queryEl && mappingRes.status === "fulfilled") {
+    queryEl.replaceChildren(queryDetails((mappingRes.value.meta || {}).query_used, "Mapping query"));
+  }
+
+  mappingLoaded = true;
+}
+
+/* ---------- ops ---------- */
+let opsLoaded = false;
+
+async function loadOps(force = false) {
+  if (opsLoaded && !force) return;
+  const healthEl = document.getElementById("ops-health");
+  const nodesEl = document.getElementById("ops-nodes");
+  const shardsEl = document.getElementById("ops-shards");
+  if (healthEl) healthEl.replaceChildren(h("div", { class: "loading", text: "Loading ops health…" }));
+
+  const [healthRes, nodesRes, shardsRes] = await Promise.allSettled([
+    API.get("/api/ops/health"),
+    API.get("/api/ops/nodes"),
+    API.get("/api/ops/shards"),
+  ]);
+
+  if (healthEl) {
+    if (healthRes.status === "fulfilled") {
+      const hd = (healthRes.value.data && healthRes.value.data.health) || {};
+      healthEl.replaceChildren(
+        h(
+          "div",
+          { class: "card" },
+          h(
+            "div",
+            { class: "card-head" },
+            h("h3", { text: "Cluster Health" }),
+            h("span", { class: `tag tag-${hd.status || ""}`, text: hd.status || "unknown" })
+          ),
+          h(
+            "div",
+            { class: "kv-grid" },
+            kv("Cluster name", hd.cluster_name || "—"),
+            kv("Status", hd.status || "—"),
+            kv("Nodes count", hd.number_of_nodes),
+            kv("Active primary shards", hd.active_primary_shards),
+            kv("Active total shards", hd.active_shards),
+            kv("Relocating shards", hd.relocating_shards),
+            kv("Initializing shards", hd.initializing_shards),
+            kv("Unassigned shards", hd.unassigned_shards)
+          )
+        )
+      );
+    } else {
+      healthEl.replaceChildren(errorCard("Cluster health unavailable", healthRes.reason));
+    }
+  }
+
+  if (nodesEl) {
+    if (nodesRes.status === "fulfilled") {
+      const nd = (nodesRes.value.data && nodesRes.value.data.nodes) || [];
+      if (nd.length) {
+        nodesEl.replaceChildren(
+          h(
+            "div",
+            { class: "card" },
+            h("div", { class: "card-head" }, h("h3", { text: "Cluster Nodes" }), h("span", { class: "tag tag-muted", text: `${nd.length} node(s)` })),
+            h(
+              "div",
+              { class: "table-wrap" },
+              h(
+                "table",
+                { class: "data-table compact" },
+                h(
+                  "thead",
+                  {},
+                  h("tr", {}, h("th", { text: "Name" }), h("th", { text: "Roles" }), h("th", { text: "Heap %" }), h("th", { text: "CPU %" }), h("th", { text: "Docs count" }), h("th", { text: "Store size" }))
+                ),
+                h(
+                  "tbody",
+                  {},
+                  ...nd.map((n) =>
+                    h(
+                      "tr",
+                      {},
+                      h("td", { text: n.name || "—" }),
+                      h("td", { text: Array.isArray(n.roles) ? n.roles.join(", ") : String(n.roles || "—") }),
+                      h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "—" }),
+                      h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "—" }),
+                      h("td", { text: fmtNumber(n.docs) }),
+                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "—" })
+                    )
+                  )
+                )
+              )
+            )
+          )
+        );
+      } else {
+        nodesEl.replaceChildren(h("div", { class: "card" }, h("p", { class: "muted small", text: "No nodes found." })));
+      }
+    } else {
+      nodesEl.replaceChildren(errorCard("Nodes unavailable", nodesRes.reason));
+    }
+  }
+
+  if (shardsEl) {
+    if (shardsRes.status === "fulfilled") {
+      const sd = (shardsRes.value.data && shardsRes.value.data.shards) || [];
+      shardsEl.replaceChildren(
+        h(
+          "div",
+          { class: "card" },
+          h("div", { class: "card-head" }, h("h3", { text: "Shards Allocation" }), h("span", { class: "tag tag-muted", text: `${sd.length} shards total` })),
+          h(
+            "div",
+            { class: "table-wrap" },
+            h(
+              "table",
+              { class: "data-table compact" },
+              h(
+                "thead",
+                {},
+                h("tr", {}, h("th", { text: "Index" }), h("th", { text: "Shard" }), h("th", { text: "Type" }), h("th", { text: "State" }), h("th", { text: "Docs" }), h("th", { text: "Store" }), h("th", { text: "Node" }))
+              ),
+              h(
+                "tbody",
+                {},
+                ...sd.map((s) =>
+                  h(
+                    "tr",
+                    { class: s.state === "UNASSIGNED" ? "row-unassigned" : "" },
+                    h("td", {}, h("code", { text: s.index || "—" })),
+                    h("td", { text: s.shard ?? "—" }),
+                    h("td", { text: s.prirep === "p" ? "primary" : s.prirep === "r" ? "replica" : s.prirep }),
+                    h("td", { text: s.state || "—" }),
+                    h("td", { text: s.docs != null ? fmtNumber(s.docs) : "—" }),
+                    h("td", { text: s.store || "—" }),
+                    h("td", { text: s.node || "unassigned" })
+                  )
+                )
+              )
+            )
+          )
+        )
+      );
+    } else {
+      shardsEl.replaceChildren(errorCard("Shards unavailable", shardsRes.reason));
+    }
+  }
+
+  opsLoaded = true;
+}
+
+/* ---------- guarded console ---------- */
+async function runConsole() {
+  const input = document.getElementById("console-input");
+  const results = document.getElementById("console-results");
+  const metaEl = document.getElementById("console-meta");
+  const queryEl = document.getElementById("console-query");
+  if (!results) return;
+
+  let body;
+  try {
+    body = JSON.parse((input && input.value) || "{}");
+  } catch (err) {
+    results.replaceChildren(h("div", { class: "error-card" }, h("h3", { text: "Invalid JSON" }), h("p", { text: err.message })));
+    return;
+  }
+
+  results.replaceChildren(h("div", { class: "loading", text: "Running query…" }));
+  if (metaEl) metaEl.replaceChildren();
+  if (queryEl) queryEl.replaceChildren();
+
+  try {
+    const res = await API.post("/api/query/gujrat_rera_data", body);
+    const meta = res.meta || {};
+    const data = res.data || {};
+    const hits = (data.hits && data.hits.hits) || [];
+
+    if (metaEl) {
+      metaEl.replaceChildren(
+        h("span", { class: "meta-item" }, h("strong", { text: fmtNumber(meta.total) }), " matches"),
+        h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
+        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "—")),
+        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "—"))
+      );
+    }
+
+    results.replaceChildren(
+      h(
+        "details",
+        { class: "details", open: true },
+        h("summary", { text: `Query Result (${hits.length} hits)` }),
+        h("pre", { text: JSON.stringify(data, null, 2) })
+      )
+    );
+
+    if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "Executed query"));
+  } catch (err) {
+    results.replaceChildren(errorCard("Query rejected or failed", err));
+  }
+}
+
 /* ---------- bootstrap ---------- */
 function initProjects() {
   const searchBtn = document.getElementById("projects-search");
@@ -1239,6 +1770,9 @@ function initTabs() {
       if (name === "projects") ensureProjects();
       if (name === "analytics") loadAnalytics();
       if (name === "quality") loadQuality();
+      if (name === "pagination") ensurePagination();
+      if (name === "mapping") loadMapping();
+      if (name === "ops") loadOps();
     });
   });
 }
@@ -1254,5 +1788,58 @@ document.addEventListener("DOMContentLoaded", () => {
   if (qualityRefresh) qualityRefresh.addEventListener("click", () => loadQuality(true));
   const pipelineRun = document.getElementById("pipeline-run");
   if (pipelineRun) pipelineRun.addEventListener("click", runPipeline);
+
+  // Pagination & Export
+  const pagGo = document.getElementById("pag-go");
+  if (pagGo) pagGo.addEventListener("click", pagFromSize);
+  const pagNext = document.getElementById("pag-next");
+  if (pagNext) pagNext.addEventListener("click", pagSearchAfter);
+  const pagCursorReset = document.getElementById("pag-cursor-reset");
+  if (pagCursorReset) {
+    pagCursorReset.addEventListener("click", () => {
+      pagCursor = null;
+      const info = document.getElementById("pag-cursor-info");
+      if (info) info.textContent = "Cursor reset to start.";
+    });
+  }
+  const paginationRefresh = document.getElementById("pagination-refresh");
+  if (paginationRefresh) {
+    paginationRefresh.addEventListener("click", () => {
+      paginationLoaded = false;
+      ensurePagination();
+    });
+  }
+  const pitOpenBtn = document.getElementById("pit-open");
+  if (pitOpenBtn) pitOpenBtn.addEventListener("click", pitOpen);
+  const pitNextBtn = document.getElementById("pit-next");
+  if (pitNextBtn) pitNextBtn.addEventListener("click", pitNext);
+  const pitCloseBtn = document.getElementById("pit-close");
+  if (pitCloseBtn) pitCloseBtn.addEventListener("click", pitClose);
+  const exportLimit = document.getElementById("export-limit");
+  if (exportLimit) exportLimit.addEventListener("input", updateExportLink);
+
+  // Mapping & Analyze
+  const mappingRefresh = document.getElementById("mapping-refresh");
+  if (mappingRefresh) mappingRefresh.addEventListener("click", () => loadMapping(true));
+  const analyzeRun = document.getElementById("analyze-run");
+  if (analyzeRun) analyzeRun.addEventListener("click", runAnalyze);
+
+  // Ops
+  const opsRefresh = document.getElementById("ops-refresh");
+  if (opsRefresh) opsRefresh.addEventListener("click", () => loadOps(true));
+
+  // Console
+  const consoleRun = document.getElementById("console-run");
+  if (consoleRun) consoleRun.addEventListener("click", runConsole);
+  const consoleInput = document.getElementById("console-input");
+  if (consoleInput) {
+    consoleInput.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.key === "Enter") {
+        e.preventDefault();
+        runConsole();
+      }
+    });
+  }
+
   loadDashboard(true);
 });

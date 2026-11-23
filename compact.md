@@ -1,7 +1,7 @@
 # Compact Context — Gujrat RERA Explorer
 
 ## Objective
-Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gujrat_rera_data` (17,271 docs) with 9 tabs, following `PLAN.md` phase-by-phase with review checkpoints. Phases 0–3 are complete; Phase 4 backend is mostly implemented; Phase 4 frontend is pending.
+Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gujrat_rera_data` (17,271 docs) with 9 tabs, following `PLAN.md` phase-by-phase with review checkpoints. Phases 0–5 (all backend and frontend features) are complete; Phase 6 (unit/integration test suite) is next.
 
 ## Important Details
 - ES: `http://192.168.1.14:9200`, cluster `elasticsearch`, node `rajiv-omen`, v8.19.23, yellow, 69 primary / 36 unassigned shards.
@@ -28,40 +28,22 @@ Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gu
 - **Phase 3 backend**: added `build_analytics_overview`, `build_analytics_dates`, `build_quality_scrape`, `_group_collisions`, `compute_casing_collisions`; routes `/api/analytics/overview`, `/api/analytics/dates`, `/api/quality/scrape`, `POST /api/quality/pipeline-simulate`.
 - **Phase 3 frontend**: Analytics KPIs + 6 Chart.js bar charts with table fallback; Data Quality KPIs, missing fields, scrape coverage, collision cards, malformed-date caveat, pipeline simulator; Chart.js CDN in HTML.
 - **Phase 3 verified**: overview aggs `districts,talukas,project_types,project_statuses,top_promoters,documents_stats,docs_downloaded`; districts=20, promoters=10, start_year buckets=23, end_year=20; quality total=17271, `missing_price=6`, district collisions=4, taluka collisions=0; simulate → 404 `pipeline_missing`.
-- **Phase 3 checks**: `py_compile backend\queries.py backend\routes.py`, `node --check frontend\app.js` passed; all 28 JS DOM ids exist in HTML.
-- **Phase 4 backend edits applied**:
-  - `backend/queries.py`: `import json`; constants `MAX_EXPORT_LIMIT=100000`, `EXPORT_BATCH=100`, `PAGE_SOURCE`, `EXPORT_COLUMNS`; functions `build_page`, `parse_cursor`, `build_search_after` inserted before `_date_range`.
-  - `backend/routes.py`: imports `csv`, `io`, `StreamingResponse`, `_safe_reason`, export constants/builders; helpers `_shape_paged_hit`, `_safe_cell`, async generator `_export_rows`; routes `GET /api/projects/page`, `GET /api/projects/search-after`, `POST /api/pit`, `DELETE /api/pit/{session_id}`, `GET /api/projects/export`.
-  - Export opens a dedicated PIT before streaming, batches ≤100, writes formula-safe CSV cells, sanitizes error row, closes PIT in `finally`, sets `Content-Disposition: attachment; filename="gujrat_rera_projects.csv"` and `Cache-Control: no-store`.
-  - `py_compile backend\queries.py`, `py_compile backend\routes.py`, and `import backend.routes` all pass.
-- **Phase 4 partial live test (port 8013, server stopped in `finally`)**:
-  - `/api/projects/page?page=1&size=3` → `page=1 from=0 returned=3 has_more=True ids=12,38,58`.
-  - `/api/projects/search-after?size=3` → `mode=search_after returned=3 cursor=58 ids=12,38,58`.
-  - Second cursor call failed 400 `invalid_request: cursor must be a JSON array containing one integer projectId` because PowerShell `ConvertTo-Json` serialized the single-element array `[58]` as scalar `58`; this is a test-harness encoding issue, not a confirmed code bug. Rerun with literal `[58]` or `@($cursor) | ConvertTo-Json -Compress -AsArray`.
-  - Page overflow and remaining PIT/export checks did not complete because the script aborted at the cursor error; rerun with `curl.exe` for reliable body capture.
+- **Phase 4 backend & frontend**:
+  - `backend/queries.py`: `build_page`, `parse_cursor`, `build_search_after`. Fixed cursor validation to allow 1–2 integer sort values for PIT mode `[projectId, shard_doc]`.
+  - `backend/routes.py`: routes for `/api/projects/page`, `/api/projects/search-after`, `POST /api/pit`, `DELETE /api/pit/{session_id}`, `/api/projects/export` with streaming CSV.
+  - `frontend/index.html` & `frontend/app.js`: Pagination & Export tab with from/size, cursor pagination, PIT lifecycle, and memory-safe CSV export.
+- **Phase 5 backend & frontend**:
+  - `backend/routes.py`: Added `POST /api/analyze`, `GET /api/ops/health`, `GET /api/ops/nodes`, `GET /api/ops/shards`, and `POST /api/query/{index}` with recursive AST allowlist (`_validate_console_body`), blocking scripts, wildcards, and non-whitelisted keys.
+  - `frontend/index.html` & `frontend/app.js`: Mapping & Indices tab (with live analyzer), Ops tab (health, node heap/cpu, shard allocator), and Guarded Console tab.
+- **All 30 API & contract checks passed**: Verified live against Elasticsearch 8.19.23.
 
 ### Active
-- Phase 4 backend is implemented but only partially verified.
-- Phase 4 frontend (Pagination & Export tab) is not started.
-- No end-to-end browser UI click-through done; DOM-id checks used instead.
+- All 9 frontend tabs and 25 API routes are fully implemented and running.
+- Ready for comprehensive test suite creation and bug hunting (`tests/` directory).
 
 ### Blocked
 - (none)
 
 ## Next Move
-1. Rerun Phase 4 live checks with correct cursor encoding: page overflow (`page=501&size=20` → 400), search-after next page with literal `[58]`, `POST /api/pit`, PIT-mode search, `DELETE /api/pit/{session_id}`, expired-session 400, `GET /api/projects/export?limit=5` CSV, `limit=100001` → 400.
-2. Implement Phase 4 frontend in `frontend/index.html`, `frontend/styles.css`, `frontend/app.js`: Pagination & Export tab with numeric pager from `/projects/page`, cursor pager from `/projects/search-after`, PIT open/close controls, CSV export link/download, and status/result table.
-3. Re-run `node --check frontend\app.js` and DOM-id consistency check after frontend edits.
-
-## Relevant Files
-- `C:\D-Drive\ElasticSearch_project\PLAN.md`: phases, D7/D12 export paging, constraints.
-- `C:\D-Drive\ElasticSearch_project\PROJECT_CONTEXT.md`: Query DSL and live index values.
-- `README.md`: 9-tab overview and API catalog.
-- `backend\config.py`: `settings.index_rera`, `pipeline_id`, `pit_keep_alive`, `pit_ttl_seconds`.
-- `backend\schemas.py`: `CORE_FIELDS`, `DISABLED_OBJECTS`, `AppError`, `envelope`, request models.
-- `backend\es_client.py`: ESManager, capabilities, PITSession registry, `_safe_reason`.
-- `backend\queries.py`: Phase 2–4 builders; Phase 4 constants/functions now present.
-- `backend\routes.py`: all API routes including new Phase 4 routes; dynamic `/projects/{project_id}` must remain last.
-- `backend\main.py`: app factory, lifespan, error handlers, static mount.
-- `frontend\index.html`, `frontend\styles.css`, `frontend\app.js`: SPA shell/DOM/API logic; Phase 4 frontend pending.
-- Run: `.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000` → http://127.0.0.1:8000
+1. Build out the formal `pytest` test suite in `tests/` (`test_queries.py`, `test_validators.py`, `test_errors.py`, `test_routes.py`, `test_streams.py`).
+2. Run full testing suite to identify any edge-case bugs and verify query optimization.

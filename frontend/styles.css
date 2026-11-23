@@ -369,6 +369,8 @@ label { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color
   background: rgba(251, 191, 36, .12); border-radius: 3px; padding: 0 2px;
 }
 .data-table.compact td, .data-table.compact th { padding: 7px 9px; font-size: 12px; }
+.data-table tbody tr.row-disabled { color: var(--purple); opacity: 0.85; }
+.data-table tbody tr.row-unassigned { background: rgba(251, 191, 36, 0.08); color: var(--yellow); }
 
 .section-card .card-head { margin-bottom: 12px; }
 .tag-muted { color: var(--purple); border-color: rgba(167, 139, 250, .4); background: rgba(167, 139, 250, .1); }

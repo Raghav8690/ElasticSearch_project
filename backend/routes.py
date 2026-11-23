@@ -30,7 +30,7 @@ from .queries import (
     compute_casing_collisions,
     extract_sections,
 )
-from .schemas import DISABLED_OBJECTS, AppError, PipelineSimulateRequest, envelope
+from .schemas import DISABLED_OBJECTS, AnalyzeRequest, AppError, PipelineSimulateRequest, envelope
 
 router = APIRouter(prefix="/api")
 
@@ -324,7 +324,7 @@ async def simulate_pipeline(
     source = payload.source or {}
     if len(json.dumps(source, ensure_ascii=False)) > 100_000:
         raise AppError("invalid_request", "Document is too large to simulate (max 100 KB).")
-    pipeline_id = settings.pipeline_id
+    pipeline_id = payload.pipeline_id or settings.pipeline_id
     docs = [{"_source": source}]
     start = time.perf_counter()
     try:
@@ -730,6 +730,182 @@ async def project_facets(es: ESManager = Depends(get_es)) -> dict[str, Any]:
         es_took_ms=resp.get("took"),
         wall_ms=wall,
         query_used={"method": "POST", "path": f"/{settings.index_rera}/_search", "body": body},
+    )
+
+
+# -- analyzer tool ---------------------------------------------------------
+@router.post("/analyze")
+async def analyze_text(
+    payload: AnalyzeRequest,
+    es: ESManager = Depends(get_es),
+) -> dict[str, Any]:
+    start = time.perf_counter()
+    kwargs: dict[str, Any] = {"text": payload.text}
+    if payload.field:
+        kwargs["index"] = settings.index_rera
+        kwargs["field"] = payload.field
+    elif payload.analyzer:
+        kwargs["analyzer"] = payload.analyzer
+    else:
+        kwargs["analyzer"] = "standard"
+    resp = (await es.client.indices.analyze(**kwargs)).body
+    wall = now_ms(start)
+    tokens = resp.get("tokens") or []
+    return envelope(
+        {"tokens": tokens},
+        index=settings.index_rera,
+        total=len(tokens),
+        returned=len(tokens),
+        wall_ms=wall,
+        query_used={"method": "POST", "path": "/_analyze", "body": kwargs},
+    )
+
+
+# -- ops -------------------------------------------------------------------
+@router.get("/ops/health")
+async def ops_cluster_health(es: ESManager = Depends(get_es)) -> dict[str, Any]:
+    start = time.perf_counter()
+    resp = (await es.client.cluster.health()).body
+    wall = now_ms(start)
+    return envelope(
+        {"health": resp},
+        index=settings.index_rera,
+        wall_ms=wall,
+        query_used={"method": "GET", "path": "/_cluster/health"},
+    )
+
+
+@router.get("/ops/nodes")
+async def ops_nodes(es: ESManager = Depends(get_es)) -> dict[str, Any]:
+    start = time.perf_counter()
+    resp = (await es.client.nodes.stats(metric=["os", "process", "jvm", "indices", "thread_pool"])).body
+    wall = now_ms(start)
+    nodes_raw = resp.get("nodes") or {}
+    nodes_list: list[dict[str, Any]] = []
+    for node_id, n in nodes_raw.items():
+        jvm = n.get("jvm") or {}
+        mem = jvm.get("mem") or {}
+        os_stat = n.get("os") or {}
+        os_cpu = os_stat.get("cpu") or {}
+        indices_stat = n.get("indices") or {}
+        docs_stat = indices_stat.get("docs") or {}
+        store_stat = indices_stat.get("store") or {}
+        nodes_list.append({
+            "id": node_id,
+            "name": n.get("name"),
+            "roles": n.get("roles") or [],
+            "heap_used": mem.get("heap_used_in_bytes"),
+            "heap_max": mem.get("heap_max_in_bytes"),
+            "heap_percent": mem.get("heap_used_percent"),
+            "cpu_percent": os_cpu.get("percent"),
+            "docs": docs_stat.get("count"),
+            "store": store_stat.get("size_in_bytes"),
+        })
+    return envelope(
+        {"nodes": nodes_list},
+        index=settings.index_rera,
+        total=len(nodes_list),
+        returned=len(nodes_list),
+        wall_ms=wall,
+        query_used={"method": "GET", "path": "/_nodes/stats/os,process,jvm,indices,thread_pool"},
+    )
+
+
+@router.get("/ops/shards")
+async def ops_shards(es: ESManager = Depends(get_es)) -> dict[str, Any]:
+    start = time.perf_counter()
+    shards = (await es.client.cat.shards(format="json", h=["index", "shard", "prirep", "state", "docs", "store", "node"])).body
+    wall = now_ms(start)
+    return envelope(
+        {"shards": shards},
+        index=settings.index_rera,
+        total=len(shards),
+        returned=len(shards),
+        wall_ms=wall,
+        query_used={"method": "GET", "path": "/_cat/shards"},
+    )
+
+
+# -- guarded console -------------------------------------------------------
+ALLOWED_CONSOLE_KEYS = {
+    "query", "aggs", "size", "from", "sort", "_source",
+    "track_total_hits", "collapse", "highlight", "post_filter"
+}
+FORBIDDEN_KEY_NAMES = {
+    "script", "script_fields", "runtime_mappings", "regexp"
+}
+
+
+def _check_forbidden_recursive(node: Any) -> None:
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k in FORBIDDEN_KEY_NAMES:
+                raise AppError("invalid_request", f"Clause '{k}' is forbidden in the guarded console.")
+            if isinstance(k, str) and k.startswith("*"):
+                raise AppError("invalid_request", "Leading wildcards are forbidden.")
+            _check_forbidden_recursive(v)
+    elif isinstance(node, list):
+        for item in node:
+            _check_forbidden_recursive(item)
+    elif isinstance(node, str):
+        if node.startswith("*"):
+            raise AppError("invalid_request", "Leading wildcards are forbidden.")
+
+
+def _validate_console_body(body: dict[str, Any]) -> None:
+    if not isinstance(body, dict):
+        raise AppError("invalid_request", "Query body must be a JSON object.")
+
+    for k in body:
+        if k not in ALLOWED_CONSOLE_KEYS:
+            raise AppError("invalid_request", f"Key '{k}' is not allowed in console queries.")
+
+    size = body.get("size", 10)
+    from_ = body.get("from", 0)
+    if isinstance(size, int) and size > 100:
+        raise AppError("invalid_request", "size must be <= 100.")
+    if isinstance(size, int) and isinstance(from_, int) and (size + from_) > 10000:
+        raise AppError("invalid_request", "from + size must be <= 10000.")
+
+    source = body.get("_source")
+    if isinstance(source, list):
+        for item in source:
+            if isinstance(item, str) and item in DISABLED_OBJECTS:
+                raise AppError("invalid_request", f"Cannot query or fetch disabled object '{item}' in console.")
+    elif isinstance(source, str) and source in DISABLED_OBJECTS:
+        raise AppError("invalid_request", f"Cannot query or fetch disabled object '{source}' in console.")
+
+    _check_forbidden_recursive(body)
+
+
+@router.post("/query/{index}")
+async def console_query(
+    index: str,
+    request: Request,
+    es: ESManager = Depends(get_es),
+) -> dict[str, Any]:
+    require_index(index)
+    try:
+        body = await request.json()
+    except Exception:
+        raise AppError("invalid_request", "Invalid JSON body.")
+    _validate_console_body(body)
+    start = time.perf_counter()
+    try:
+        resp = (await es.client.search(index=index, **body)).body
+    except BadRequestError as exc:
+        raise AppError("invalid_request", f"Elasticsearch rejected query: {exc.message}")
+    wall = now_ms(start)
+    hits = (resp.get("hits") or {}).get("hits") or []
+    total = ((resp.get("hits") or {}).get("total") or {}).get("value")
+    return envelope(
+        resp,
+        index=index,
+        total=total if total is not None else len(hits),
+        returned=len(hits),
+        es_took_ms=resp.get("took"),
+        wall_ms=wall,
+        query_used={"method": "POST", "path": f"/{index}/_search", "body": body},
     )
 
 

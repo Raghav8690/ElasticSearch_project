@@ -122,11 +122,10 @@ def parse_cursor(cursor: str | None) -> list[Any]:
         raise _invalid("cursor must be a JSON array of the last hit's sort values.")
     if (
         not isinstance(value, list)
-        or len(value) != 1
-        or not isinstance(value[0], int)
-        or isinstance(value[0], bool)
+        or not (1 <= len(value) <= 2)
+        or not all(isinstance(x, int) and not isinstance(x, bool) for x in value)
     ):
-        raise _invalid("cursor must be a JSON array containing one integer projectId.")
+        raise _invalid("cursor must be a JSON array containing integer sort values.")
     return value
 
 
