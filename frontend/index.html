@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
   <title>Gujrat RERA Explorer</title>
-  <link rel="stylesheet" href="/static/styles.css?v=2" />
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -19,27 +19,27 @@
       </div>
       <div class="header-meta">
         <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
-        <span class="pill pill-status is-unknown" id="cluster-pill">
+        <span class="pill pill-status is-unknown" id="cluster-pill" aria-live="polite">
           <span class="dot"></span><span class="pill-label">checking…</span>
         </span>
       </div>
     </header>
 
-    <nav class="tabs" id="tabs" aria-label="Sections">
-      <button class="tab is-active" data-tab="dashboard">Dashboard</button>
-      <button class="tab" data-tab="projects">Projects</button>
-      <button class="tab" data-tab="detail">Project Detail</button>
-      <button class="tab" data-tab="analytics">Analytics</button>
-      <button class="tab" data-tab="quality">Data Quality</button>
-      <button class="tab" data-tab="pagination">Pagination &amp; Export</button>
-      <button class="tab" data-tab="mapping">Mapping &amp; Indices</button>
-      <button class="tab" data-tab="ops">Ops</button>
-      <button class="tab" data-tab="console">Console</button>
+    <nav class="tabs" id="tabs" aria-label="Sections" role="tablist">
+      <button class="tab is-active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Dashboard</button>
+      <button class="tab" id="tab-projects" role="tab" aria-selected="false" aria-controls="panel-projects" data-tab="projects">Projects</button>
+      <button class="tab" id="tab-detail" role="tab" aria-selected="false" aria-controls="panel-detail" data-tab="detail">Project Detail</button>
+      <button class="tab" id="tab-analytics" role="tab" aria-selected="false" aria-controls="panel-analytics" data-tab="analytics">Analytics</button>
+      <button class="tab" id="tab-quality" role="tab" aria-selected="false" aria-controls="panel-quality" data-tab="quality">Data Quality</button>
+      <button class="tab" id="tab-pagination" role="tab" aria-selected="false" aria-controls="panel-pagination" data-tab="pagination">Pagination &amp; Export</button>
+      <button class="tab" id="tab-mapping" role="tab" aria-selected="false" aria-controls="panel-mapping" data-tab="mapping">Mapping &amp; Indices</button>
+      <button class="tab" id="tab-ops" role="tab" aria-selected="false" aria-controls="panel-ops" data-tab="ops">Ops</button>
+      <button class="tab" id="tab-console" role="tab" aria-selected="false" aria-controls="panel-console" data-tab="console">Console</button>
     </nav>
   </div>
 
   <main id="main">
-    <section class="panel is-active" data-panel="dashboard">
+    <section class="panel is-active" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard" data-panel="dashboard">
       <div class="panel-head">
         <div>
           <h2>Dashboard</h2>
@@ -52,7 +52,7 @@
       </div>
     </section>
 
-    <section class="panel" data-panel="projects">
+    <section class="panel" id="panel-projects" role="tabpanel" aria-labelledby="tab-projects" data-panel="projects">
       <div class="panel-head">
         <div>
           <h2>Projects</h2>
@@ -115,14 +115,14 @@
               <select id="f-size"><option>20</option><option>50</option><option>100</option></select>
             </div>
           </form>
-          <div class="result-meta" id="projects-meta"></div>
-          <div id="projects-results" class="stack"></div>
+          <div class="result-meta" id="projects-meta" aria-live="polite"></div>
+          <div id="projects-results" class="stack" aria-live="polite"></div>
           <div id="projects-query"></div>
         </div>
       </div>
     </section>
 
-    <section class="panel" data-panel="detail">
+    <section class="panel" id="panel-detail" role="tabpanel" aria-labelledby="tab-detail" data-panel="detail">
       <div class="panel-head">
         <div>
           <h2>Project Detail</h2>
@@ -130,7 +130,7 @@
         </div>
         <div class="head-actions">
           <div class="inline-input">
-            <input id="detail-id" type="text" placeholder="projectId e.g. 573" />
+            <input id="detail-id" type="text" placeholder="projectId e.g. 573" aria-label="Project ID" />
             <button class="btn btn-primary" type="button" id="detail-load">Load</button>
           </div>
           <button class="btn btn-ghost" type="button" id="detail-back">Back to Projects</button>
@@ -140,7 +140,8 @@
         <div class="placeholder">Open a project from the Projects tab, or enter a projectId above.</div>
       </div>
     </section>
-    <section class="panel" data-panel="analytics">
+
+    <section class="panel" id="panel-analytics" role="tabpanel" aria-labelledby="tab-analytics" data-panel="analytics">
       <div class="panel-head">
         <div>
           <h2>Analytics</h2>
@@ -152,7 +153,8 @@
         <div class="placeholder">Open this tab to load analytics.</div>
       </div>
     </section>
-    <section class="panel" data-panel="quality">
+
+    <section class="panel" id="panel-quality" role="tabpanel" aria-labelledby="tab-quality" data-panel="quality">
       <div class="panel-head">
         <div>
           <h2>Data Quality</h2>
@@ -194,7 +196,8 @@
         </div>
       </div>
     </section>
-    <section class="panel" data-panel="pagination">
+
+    <section class="panel" id="panel-pagination" role="tabpanel" aria-labelledby="tab-pagination" data-panel="pagination">
       <div class="panel-head">
         <div>
           <h2>Pagination &amp; Export</h2>
@@ -208,48 +211,48 @@
         <div class="grid-2">
           <div class="card">
             <div class="card-head"><h3>Page N (from / size)</h3></div>
-            <div class="head-actions" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
-              <label>Page <input id="pag-page" type="number" value="1" min="1" style="width:70px" /></label>
+            <div class="head-actions mb-12 gap-8 flex-wrap">
+              <label>Page <input id="pag-page" type="number" value="1" min="1" class="w-70" /></label>
               <label>Size <select id="pag-size"><option>20</option><option>50</option><option>100</option></select></label>
               <button class="btn btn-primary" id="pag-go" type="button">Go</button>
             </div>
-            <div id="pag-from-results"></div>
+            <div id="pag-from-results" aria-live="polite"></div>
             <div id="pag-from-query"></div>
           </div>
           <div class="card">
             <div class="card-head"><h3>Cursor (search_after)</h3></div>
-            <div class="head-actions" style="margin-bottom:12px;gap:8px">
+            <div class="head-actions mb-12 gap-8">
               <button class="btn btn-primary" id="pag-next" type="button">Next 100</button>
               <button class="btn btn-ghost" id="pag-cursor-reset" type="button">Reset cursor</button>
             </div>
-            <div id="pag-cursor-info" class="muted small" style="margin-bottom:10px"></div>
-            <div id="pag-cursor-results"></div>
+            <div id="pag-cursor-info" class="muted small mb-10"></div>
+            <div id="pag-cursor-results" aria-live="polite"></div>
             <div id="pag-cursor-query"></div>
           </div>
         </div>
         <div class="card">
           <div class="card-head"><h3>Point-in-Time (PIT) Session</h3></div>
-          <p class="muted small" style="margin-bottom:10px">Opens a stateful point-in-time context with server-side TTL tracking.</p>
-          <div class="head-actions" style="margin-bottom:12px;gap:8px">
+          <p class="muted small mb-10">Opens a stateful point-in-time context with server-side TTL tracking.</p>
+          <div class="head-actions mb-12 gap-8">
             <button class="btn btn-primary" id="pit-open" type="button">Open PIT</button>
             <button class="btn btn-ghost" id="pit-next" type="button">Next (PIT)</button>
             <button class="btn btn-ghost" id="pit-close" type="button">Close PIT</button>
           </div>
-          <div id="pit-info" class="muted small" style="margin-bottom:10px"></div>
-          <div id="pit-results"></div>
+          <div id="pit-info" class="muted small mb-10"></div>
+          <div id="pit-results" aria-live="polite"></div>
         </div>
         <div class="card">
           <div class="card-head"><h3>CSV Export</h3></div>
           <p class="muted small">Streams all projects as CSV using a dedicated PIT + search_after. Memory bounded, formula-safe cells.</p>
-          <div class="head-actions" style="margin-top:12px;gap:8px;align-items:center">
-            <label>Limit <input id="export-limit" type="number" value="17271" min="1" max="100000" style="width:110px" /></label>
+          <div class="head-actions mt-12 gap-8 items-center">
+            <label>Limit <input id="export-limit" type="number" value="17271" min="1" max="100000" class="w-110" /></label>
             <a class="btn btn-primary" id="export-link" href="/api/projects/export?limit=17271" target="_blank" download="gujrat_rera_projects.csv">Export CSV</a>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="panel" data-panel="mapping">
+    <section class="panel" id="panel-mapping" role="tabpanel" aria-labelledby="tab-mapping" data-panel="mapping">
       <div class="panel-head">
         <div>
           <h2>Mapping &amp; Indices</h2>
@@ -266,10 +269,10 @@
         </div>
         <div class="card">
           <div class="card-head"><h3>Analyzer Tool (POST /_analyze)</h3></div>
-          <p class="muted small" style="margin-bottom:10px">Test Elasticsearch tokenization against text fields or built-in analyzers.</p>
-          <div class="head-actions" style="margin-bottom:12px;gap:8px;flex-wrap:wrap">
-            <input id="analyze-text" type="text" value="Shivalik Residences Ahmedabad" placeholder="Text to analyze" style="flex:1;min-width:200px" />
-            <select id="analyze-field" style="width:160px">
+          <p class="muted small mb-10">Test Elasticsearch tokenization against text fields or built-in analyzers.</p>
+          <div class="head-actions mb-12 gap-8 flex-wrap">
+            <input id="analyze-text" type="text" value="Shivalik Residences Ahmedabad" placeholder="Text to analyze" aria-label="Text to analyze" class="flex-1 min-w-200" />
+            <select id="analyze-field" aria-label="Field to analyze" class="w-160">
               <option value="">Standard analyzer</option>
               <option value="project_name">project_name (text)</option>
               <option value="project_name.keyword">project_name.keyword</option>
@@ -277,13 +280,13 @@
             </select>
             <button class="btn btn-primary" id="analyze-run" type="button">Analyze</button>
           </div>
-          <div id="analyze-output"></div>
+          <div id="analyze-output" aria-live="polite"></div>
         </div>
         <div id="mapping-query"></div>
       </div>
     </section>
 
-    <section class="panel" data-panel="ops">
+    <section class="panel" id="panel-ops" role="tabpanel" aria-labelledby="tab-ops" data-panel="ops">
       <div class="panel-head">
         <div>
           <h2>Ops</h2>
@@ -298,7 +301,7 @@
         <div class="card note">
           <div class="card-head"><h3>P13 Administrative Runbook (Documented Only)</h3></div>
           <p>The following operations require cluster admin privileges and are intentionally not exposed by this read-only application:</p>
-          <ul style="color:var(--text-dim);font-size:13px;margin:10px 0 0 18px;line-height:1.6">
+          <ul class="bullet-list">
             <li><strong>Security &amp; Users:</strong> Create / manage native users, roles, and role mappings (e.g. <code>POST /_security/user/...</code>).</li>
             <li><strong>API Keys:</strong> Generate, invalidate, and rotate cluster/index API keys (<code>POST /_security/api_key</code>).</li>
             <li><strong>Slow Logs:</strong> Adjust index search and indexing slow-log thresholds via <code>PUT /{index}/_settings</code>.</li>
@@ -309,7 +312,7 @@
       </div>
     </section>
 
-    <section class="panel" data-panel="console">
+    <section class="panel" id="panel-console" role="tabpanel" aria-labelledby="tab-console" data-panel="console">
       <div class="panel-head">
         <div>
           <h2>Guarded Query Console</h2>
@@ -327,12 +330,12 @@
   "size": 5,
   "_source": ["projectId", "project_name", "district", "project_status"]
 }</textarea>
-          <div class="head-actions" style="margin-top:10px">
+          <div class="head-actions mt-10">
             <button class="btn btn-primary" id="console-run" type="button">Run Query</button>
           </div>
         </div>
-        <div id="console-meta" class="result-meta"></div>
-        <div id="console-results"></div>
+        <div id="console-meta" class="result-meta" aria-live="polite"></div>
+        <div id="console-results" aria-live="polite"></div>
         <div id="console-query"></div>
       </div>
     </section>
@@ -343,6 +346,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="/static/app.js?v=2"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 """Read-only FastAPI routes. All routes live under /api."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
@@ -15,9 +16,11 @@ from elasticsearch import BadRequestError, NotFoundError
 from .config import settings
 from .es_client import CAT_INDEX_COLUMNS, ESManager, _safe_reason, flatten_mapping
 from .queries import (
+    ADDRESS_SOURCE_PATH,
     EXPORT_BATCH,
     EXPORT_COLUMNS,
     MAX_EXPORT_LIMIT,
+    address_match_score,
     build_analytics_dates,
     build_analytics_overview,
     build_facets,
@@ -28,14 +31,23 @@ from .queries import (
     build_search_after,
     build_suggest,
     compute_casing_collisions,
+    extract_project_address,
     extract_sections,
+    query_tokens,
+    suggest_match_label,
 )
 from .schemas import DISABLED_OBJECTS, AnalyzeRequest, AppError, PipelineSimulateRequest, envelope
 
 router = APIRouter(prefix="/api")
 
+ADDRESS_CACHE_TTL_SECONDS = 3600
+ADDRESS_SCAN_BATCH = 500
+_address_cache: dict[str, Any] = {"loaded_at": 0.0, "addresses": {}, "error": None}
+_address_cache_lock = asyncio.Lock()
+
 
 # -- helpers ---------------------------------------------------------------
+
 def get_es(request: Request) -> ESManager:
     es = getattr(request.app.state, "es", None)
     if es is None:
@@ -64,7 +76,82 @@ def _as_int(value: Any) -> int | None:
         return None
 
 
+def _address_cache_is_fresh() -> bool:
+    loaded_at = float(_address_cache["loaded_at"] or 0.0)
+    return bool(_address_cache["addresses"]) and (time.monotonic() - loaded_at) < ADDRESS_CACHE_TTL_SECONDS
+
+
+async def _ensure_address_index(es: ESManager) -> dict[str, str]:
+    if _address_cache_is_fresh():
+        return dict(_address_cache["addresses"])
+    async with _address_cache_lock:
+        if _address_cache_is_fresh():
+            return dict(_address_cache["addresses"])
+        addresses: dict[str, str] = {}
+        search_after: list[Any] | None = None
+        try:
+            while True:
+                kwargs: dict[str, Any] = {
+                    "index": settings.index_rera,
+                    "size": ADDRESS_SCAN_BATCH,
+                    "query": {"match_all": {}},
+                    "sort": [{"projectId": "asc"}],
+                    "source_includes": ["projectId", ADDRESS_SOURCE_PATH],
+                    "track_total_hits": False,
+                }
+                if search_after:
+                    kwargs["search_after"] = search_after
+                resp = (await es.client.search(**kwargs)).body
+                hits = (resp.get("hits") or {}).get("hits") or []
+                if not hits:
+                    break
+                for hit in hits:
+                    source = hit.get("_source") or {}
+                    project_id = source.get("projectId") or hit.get("_id")
+                    if project_id is None:
+                        continue
+                    addresses[str(project_id)] = extract_project_address(source)
+                sort_values = hits[-1].get("sort")
+                if not sort_values:
+                    break
+                search_after = list(sort_values)
+        except Exception as exc:
+            _address_cache["error"] = _safe_reason(exc)
+            return dict(_address_cache["addresses"])
+        _address_cache.update({"loaded_at": time.monotonic(), "addresses": addresses, "error": None})
+        return dict(addresses)
+
+
+def _address_candidate_ids(addresses: dict[str, str], q: str, limit: int) -> tuple[list[int], int]:
+    scored: list[tuple[float, int]] = []
+    for project_id, address in addresses.items():
+        numeric_id = _as_int(project_id)
+        if numeric_id is None:
+            continue
+        score = address_match_score(address, q)
+        if score > 0:
+            scored.append((score, numeric_id))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [project_id for _, project_id in scored[:limit]], len(scored)
+
+
+async def _fetch_candidate_hits(es: ESManager, ids: list[int], source_fields: list[str]) -> list[dict[str, Any]]:
+    if not ids:
+        return []
+    resp = (
+        await es.client.search(
+            index=settings.index_rera,
+            size=len(ids),
+            query={"terms": {"projectId": ids}},
+            source_includes=source_fields,
+            sort=[{"projectId": "asc"}],
+        )
+    ).body
+    return (resp.get("hits") or {}).get("hits") or []
+
+
 # -- discovery -------------------------------------------------------------
+
 @router.get("/health")
 async def health(es: ESManager = Depends(get_es)) -> dict[str, Any]:
     """Flat cluster/index summary. Intentionally not wrapped in the envelope."""
@@ -639,11 +726,15 @@ async def search_projects(
         size=size,
     )
     start = time.perf_counter()
+    has_query = bool(q and q.strip())
+    use_address_rerank = has_query and not sort
+    es_from = 0 if use_address_rerank else body["from"]
+    es_size = min(1000, max(100, body["from"] + body["size"] + 100)) if use_address_rerank else body["size"]
     resp = (
         await es.client.search(
             index=settings.index_rera,
-            size=body["size"],
-            from_=body["from"],
+            size=es_size,
+            from_=es_from,
             track_total_hits=body["track_total_hits"],
             source_includes=body["_source"],
             query=body["query"],
@@ -651,10 +742,47 @@ async def search_projects(
             highlight=body["highlight"],
         )
     ).body
-    wall = now_ms(start)
-    hits = (resp.get("hits") or {}).get("hits") or []
+    raw_hits = (resp.get("hits") or {}).get("hits") or []
     total = ((resp.get("hits") or {}).get("total") or {}).get("value")
-    data = {"hits": [_shape_hit(hit) for hit in hits]}
+    rerank: dict[str, Any] = {"address": {"enabled": use_address_rerank}}
+
+    if use_address_rerank:
+        addresses = await _ensure_address_index(es)
+        candidate_ids, candidate_total = _address_candidate_ids(addresses, q or "", max(50, body["size"] * 5))
+        candidate_hits = await _fetch_candidate_hits(es, candidate_ids, body["_source"])
+        rerank["address"] = {
+            "enabled": True,
+            "status": "unavailable" if _address_cache["error"] else "ready",
+            "indexed_addresses": len(addresses),
+            "candidates": len(candidate_ids),
+            "matches": candidate_total,
+            "error": _address_cache["error"],
+        }
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for hit in [_shape_hit(item) for item in raw_hits] + [_shape_hit(item) for item in candidate_hits]:
+            project_id = str(hit.get("projectId") or hit.get("_id") or "")
+            if project_id and project_id in seen:
+                continue
+            if project_id:
+                seen.add(project_id)
+            merged.append(hit)
+
+        def combined_score(hit: dict[str, Any]) -> float:
+            project_id = str(hit.get("projectId") or hit.get("_id") or "")
+            score = float(hit.get("_score") or 0.0) + address_match_score(addresses.get(project_id, ""), q or "")
+            hit["_score"] = round(score, 6)
+            return score
+
+        merged.sort(key=lambda hit: _as_int(hit.get("projectId") or hit.get("_id")) or 0)
+        merged.sort(key=combined_score, reverse=True)
+        total = max(total or 0, candidate_total)
+        hits = merged[body["from"] : body["from"] + body["size"]]
+    else:
+        hits = [_shape_hit(item) for item in raw_hits]
+
+    wall = now_ms(start)
+    data = {"hits": hits}
     return envelope(
         data,
         index=settings.index_rera,
@@ -662,8 +790,14 @@ async def search_projects(
         returned=len(hits),
         es_took_ms=resp.get("took"),
         wall_ms=wall,
-        query_used={"method": "POST", "path": f"/{settings.index_rera}/_search", "body": body},
+        query_used={
+            "method": "POST",
+            "path": f"/{settings.index_rera}/_search",
+            "body": body,
+            "rerank": rerank,
+        },
     )
+
 
 
 @router.get("/projects/suggest")
@@ -688,15 +822,38 @@ async def suggest_projects(
     suggestions = []
     for hit in hits:
         source = hit.get("_source") or {}
+        project_id = source.get("projectId") or hit.get("_id")
+        label = (
+            source.get("project_name")
+            or source.get("promoter_name")
+            or source.get("reg_no")
+            or str(project_id or "—")
+        )
+        meta_parts = [
+            source.get("promoter_name"),
+            source.get("district"),
+            source.get("taluka"),
+            source.get("project_type"),
+            source.get("reg_no"),
+        ]
+        meta = " · ".join(str(part) for part in meta_parts if part and str(part) != str(label))
         suggestions.append(
             {
                 "_id": hit.get("_id"),
-                "projectId": source.get("projectId"),
+                "id": project_id,
+                "projectId": project_id,
+                "label": label,
+                "match_label": suggest_match_label(q, source),
+                "meta": meta,
                 "project_name": source.get("project_name"),
+                "promoter_name": source.get("promoter_name"),
                 "district": source.get("district"),
+                "taluka": source.get("taluka"),
                 "project_type": source.get("project_type"),
+                "reg_no": source.get("reg_no"),
             }
         )
+
     return envelope(
         {"suggestions": suggestions},
         index=settings.index_rera,

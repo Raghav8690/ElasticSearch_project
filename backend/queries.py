@@ -7,6 +7,7 @@ and ``must`` only for full-text relevance. ``price`` is a keyword, so only
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -50,9 +51,116 @@ ALLOWED_SORTS = {
     "scrape_status.documents",
 }
 
+ADDRESS_SOURCE_PATH = "Project Profile.Project Overview.Project Address"
+SEARCH_TEXT_FIELDS = [
+    "project_name^4",
+    "promoter_name^3",
+    "district^3",
+    "taluka^2",
+    "project_type^3",
+    "reg_no^2",
+    "page_url^1",
+]
+QUERY_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
 
 def _invalid(message: str) -> AppError:
     return AppError("invalid_request", message, status_code=400)
+
+
+def normalize_text(value: Any) -> str:
+    return " ".join(str(value or "").lower().split())
+
+
+def query_tokens(q: str | None) -> list[str]:
+    return [token.lower() for token in QUERY_TOKEN_RE.findall(q or "") if len(token) >= 2]
+
+
+def extract_project_address(source: dict[str, Any] | None) -> str:
+    profile = (source or {}).get("Project Profile") or {}
+    if not isinstance(profile, dict):
+        return ""
+    overview = profile.get("Project Overview") or {}
+    if not isinstance(overview, dict):
+        return ""
+    return str(overview.get("Project Address") or "")
+
+
+def address_match_score(address: str | None, q: str | None) -> float:
+    address_text = normalize_text(address)
+    query_text = normalize_text(q)
+    tokens = query_tokens(q)
+    if not address_text or not tokens:
+        return 0.0
+    matched = sum(1 for token in tokens if token in address_text)
+    coverage = matched / len(tokens)
+    score = matched * 10.0 + coverage * 20.0
+    if query_text and query_text in address_text:
+        score += 60.0
+    return round(score, 2)
+
+
+def suggest_match_label(q: str | None, source: dict[str, Any] | None) -> str:
+    text = normalize_text(q)
+    data = source or {}
+    checks = [
+        ("projectId", "ID"),
+        ("reg_no", "Reg no"),
+        ("project_name", "Project"),
+        ("promoter_name", "Promoter"),
+        ("district", "District"),
+        ("project_type", "Type"),
+    ]
+    for field, label in checks:
+        value = data.get(field)
+        if value is not None and text and text in normalize_text(value):
+            return label
+    return "Match"
+
+
+def parse_search_sort(sort: str | None, has_query: bool) -> list[dict[str, Any]]:
+    if sort:
+        return parse_sort(sort)
+    if has_query:
+        return [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}]
+    return parse_sort(None)
+
+
+def _build_relevance_clause(q: str) -> dict[str, Any]:
+    text = q.strip()
+    should: list[dict[str, Any]] = []
+    if text.isdigit():
+        should.append({"term": {"projectId": {"value": int(text), "boost": 500}}})
+
+    exact_fields = [
+        ("project_name.keyword", 140),
+        ("promoter_name.keyword", 100),
+        ("district", 70),
+        ("taluka", 50),
+        ("project_type", 140),
+        ("reg_no", 100),
+    ]
+    for field, boost in exact_fields:
+        should.append({"term": {field: {"value": text, "boost": boost}}})
+
+    should.append({"match_phrase": {"project_name": {"query": text, "boost": 90}}})
+    should.append({"match_phrase": {"promoter_name": {"query": text, "boost": 70}}})
+
+    token_count = len(query_tokens(text))
+    minimum_tokens = 1 if token_count <= 1 else max(2, token_count - 1)
+    should.append(
+        {
+            "multi_match": {
+                "query": text,
+                "fields": SEARCH_TEXT_FIELDS,
+                "type": "cross_fields",
+                "operator": "or",
+                "minimum_should_match": minimum_tokens,
+                "lenient": True,
+            }
+        }
+    )
+    return {"should": should, "minimum_should_match": 1}
 
 
 def validate_size(size: int, *, maximum: int = MAX_SIZE) -> int:
@@ -221,19 +329,12 @@ def build_project_search(
         filters.append({"term": {"scrape_status.docs_downloaded": docs_downloaded}})
 
     bool_query: dict[str, Any] = {"filter": filters}
-    if q and q.strip():
-        bool_query["must"] = [
-            {
-                "multi_match": {
-                    "query": q.strip(),
-                    "fields": ["project_name^3", "promoter_name^1"],
-                    "type": "best_fields",
-                }
-            }
-        ]
+    has_query = bool(q and q.strip())
+    if has_query:
+        bool_query.update(_build_relevance_clause(q or ""))
 
     query: dict[str, Any]
-    if filters or bool_query.get("must"):
+    if filters or has_query:
         query = {"bool": bool_query}
     else:
         query = {"match_all": {}}
@@ -244,7 +345,7 @@ def build_project_search(
         "track_total_hits": True,
         "_source": list(CORE_FIELDS),
         "query": query,
-        "sort": parse_sort(sort),
+        "sort": parse_search_sort(sort, has_query),
         "highlight": {
             "pre_tags": [HIGHLIGHT_PRE],
             "post_tags": [HIGHLIGHT_POST],
@@ -254,16 +355,39 @@ def build_project_search(
 
 
 def build_suggest(q: str, size: int = 8) -> dict[str, Any]:
-    """Prefix autocomplete via match_phrase_prefix (no dedicated suggest field)."""
+    """Multi-field prefix autocomplete with score-first ordering."""
     text = (q or "").strip()
     if len(text) < 2:
         raise _invalid("Suggest requires at least 2 characters.")
     validate_size(size, maximum=20)
+    should: list[dict[str, Any]] = []
+    if text.isdigit():
+        should.append({"term": {"projectId": {"value": int(text), "boost": 100}}})
+    should.extend(
+        [
+            {"match_phrase_prefix": {"project_name": {"query": text, "boost": 8, "max_expansions": 20}}},
+            {"match_phrase_prefix": {"promoter_name": {"query": text, "boost": 5, "max_expansions": 20}}},
+            {"prefix": {"project_name.keyword": {"value": text, "boost": 6}}},
+            {"prefix": {"promoter_name.keyword": {"value": text, "boost": 4}}},
+            {"prefix": {"district": {"value": text, "boost": 4}}},
+            {"prefix": {"taluka": {"value": text, "boost": 3}}},
+            {"prefix": {"project_type": {"value": text, "boost": 3}}},
+            {"prefix": {"reg_no": {"value": text, "boost": 3}}},
+        ]
+    )
     return {
         "size": size,
-        "_source": ["projectId", "project_name", "district", "project_type"],
-        "query": {"match_phrase_prefix": {"project_name": {"query": text, "max_expansions": 20}}},
-        "sort": [{"project_name.keyword": "asc"}],
+        "_source": [
+            "projectId",
+            "project_name",
+            "promoter_name",
+            "district",
+            "taluka",
+            "project_type",
+            "reg_no",
+        ],
+        "query": {"bool": {"should": should, "minimum_should_match": 1}},
+        "sort": [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}],
     }
 
 

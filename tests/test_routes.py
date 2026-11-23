@@ -60,7 +60,9 @@ async def test_all_25_routes_and_root():
             # 10. Suggest
             r = await client.get("/api/projects/suggest?q=shiva")
             assert r.status_code == 200
-            assert "suggestions" in r.json()["data"]
+            suggestions = r.json()["data"]["suggestions"]
+            assert suggestions
+            assert all("id" in item and "label" in item and "match_label" in item for item in suggestions)
 
             # 11. Facets
             r = await client.get("/api/projects/facets")

@@ -123,7 +123,12 @@ function setStatusPill(status) {
   const s = String(status || "unknown").toLowerCase();
   pill.classList.remove("is-green", "is-yellow", "is-red", "is-unknown");
   pill.classList.add(["green", "yellow", "red"].includes(s) ? `is-${s}` : "is-unknown");
-  if (label) label.textContent = s;
+  if (label) {
+    if (s === "green") label.textContent = "healthy";
+    else if (s === "yellow") label.textContent = "yellow";
+    else if (s === "red") label.textContent = "offline";
+    else label.textContent = "checking…";
+  }
 }
 
 /* ---------- dashboard ---------- */
@@ -546,15 +551,17 @@ function initSuggest() {
                 class: "suggest-item",
                 type: "button",
                 onclick: () => {
-                  input.value = item.project_name || "";
+                  const id = item.id ?? item.projectId ?? item._id;
+                  input.value = item.label || item.project_name || "";
                   box.hidden = true;
-                  runSearch();
+                  if (id !== undefined && id !== null && id !== "") openDetail(id);
+                  else runSearch();
                 },
               },
-              h("span", { class: "suggest-name", text: item.project_name || "—" }),
+              h("span", { class: "suggest-name", text: item.label || item.project_name || "—" }),
               h("span", {
                 class: "suggest-meta",
-                text: [item.district, item.project_type].filter(Boolean).join(" · "),
+                text: [item.match_label, item.meta].filter(Boolean).join(" · "),
               })
             )
           )
@@ -796,16 +803,14 @@ function cssVar(name, fallback) {
 }
 
 const CHART_PALETTE = [
-  ["--accent", "#60a5fa"],
-  ["--green", "#4ade80"],
-  ["--yellow", "#fde047"],
-  ["--red", "#fb7185"],
-  ["--purple", "#c084fc"],
-  ["--cyan", "#38bdf8"],
-  ["--orange", "#fb923c"],
-  ["--lime", "#a3e635"],
-  ["--pink", "#e879f9"],
-  ["--text-faint", "#94a3b8"],
+  ["--accent", "#0284c7"],
+  ["--chart-green", "#4ade80"],
+  ["--yellow", "#d97706"],
+  ["--cyan", "#0891b2"],
+  ["--orange", "#ea580c"],
+  ["--pink", "#db2777"],
+  ["--lime", "#65a30d"],
+  ["--indigo", "#4f46e5"],
 ].map(([name, fallback]) => cssVar(name, fallback));
 let analyticsLoaded = false;
 let chartInstances = [];
@@ -842,23 +847,23 @@ function chartConfig(labels, values, opts = {}) {
         legend: { display: false },
         tooltip: {
           intersect: false,
-          backgroundColor: cssVar("--bg-elev", "#0e1223"),
-          borderColor: cssVar("--border", "#64748b"),
+          backgroundColor: cssVar("--text", "#0f172a"),
+          borderColor: cssVar("--border", "#cbd5e1"),
           borderWidth: 1,
-          titleColor: cssVar("--text", "#f8fafc"),
-          bodyColor: cssVar("--text-dim", "#cbd5e1"),
+          titleColor: "#ffffff",
+          bodyColor: "#f1f5f9",
         },
       },
       scales: {
         x: {
           beginAtZero: true,
-          ticks: { color: cssVar("--text-dim", "#cbd5e1"), maxRotation: 45, minRotation: 0, autoSkip: true },
-          grid: { color: cssVar("--chart-grid", "rgba(51, 65, 85, 0.7)") },
+          ticks: { color: cssVar("--text-dim", "#334155"), maxRotation: 45, minRotation: 0, autoSkip: true },
+          grid: { color: cssVar("--chart-grid", "rgba(148, 163, 184, 0.25)") },
         },
         y: {
           beginAtZero: true,
-          ticks: { color: cssVar("--text-dim", "#cbd5e1"), autoSkip: true },
-          grid: { color: cssVar("--chart-grid", "rgba(51, 65, 85, 0.7)") },
+          ticks: { color: cssVar("--text-dim", "#334155"), autoSkip: true },
+          grid: { color: cssVar("--chart-grid", "rgba(148, 163, 184, 0.25)") },
         },
       },
     },
@@ -1789,7 +1794,11 @@ function initTabs() {
   const panels = Array.from(document.querySelectorAll(".panel"));
   tabs.forEach((tab) => {
     tab.addEventListener("click", () => {
-      tabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+      tabs.forEach((t) => {
+        const isActive = t === tab;
+        t.classList.toggle("is-active", isActive);
+        t.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
       const name = tab.dataset.tab;
       panels.forEach((p) => p.classList.toggle("is-active", p.dataset.panel === name));
       if (name === "dashboard") loadDashboard(true);

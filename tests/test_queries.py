@@ -1,12 +1,17 @@
 import pytest
 from backend.queries import (
+    address_match_score,
     build_project_search,
     build_suggest,
     build_facets,
     build_page,
     build_search_after,
+    extract_project_address,
+    parse_search_sort,
     parse_sort,
     parse_cursor,
+    query_tokens,
+    suggest_match_label,
     to_indian_date,
     validate_size,
     validate_page,
@@ -92,6 +97,32 @@ def test_build_project_search_empty():
         assert dis not in body["_source"]
 
 
+def test_build_project_search_numeric_id_query():
+    body = build_project_search(q="573")
+    should = body["query"]["bool"]["should"]
+    assert {"term": {"projectId": {"value": 573, "boost": 500}}} in should
+    assert body["sort"][0] == {"_score": {"order": "desc"}}
+
+
+def test_parse_search_sort_prefers_relevance_for_queries():
+    assert parse_search_sort(None, True) == [
+        {"_score": {"order": "desc"}},
+        {"projectId": {"order": "asc"}},
+    ]
+    assert parse_search_sort(None, False) == [{"projectId": "asc"}]
+    assert parse_search_sort("projectId:desc", True) == [{"projectId": "desc"}]
+
+
+def test_address_helpers():
+    source = {"Project Profile": {"Project Overview": {"Project Address": "Near Shahibaug, Ahmedabad"}}}
+    assert extract_project_address(source) == "Near Shahibaug, Ahmedabad"
+    assert query_tokens("Shivalik Ahmedabad Developers") == ["shivalik", "ahmedabad", "developers"]
+    assert address_match_score("Near Shahibaug, Ahmedabad", "shahibaug") > 0
+    assert address_match_score("", "shahibaug") == 0
+    assert suggest_match_label("573", {"projectId": 573}) == "ID"
+    assert suggest_match_label("shiva", {"project_name": "Shivalik Residences"}) == "Project"
+
+
 def test_build_project_search_filters_and_relevance():
     body = build_project_search(
         q="residency",
@@ -111,12 +142,14 @@ def test_build_project_search_filters_and_relevance():
     assert "bool" in query
     bool_q = query["bool"]
 
-    # must should contain full text multi_match with boosts
-    must = bool_q["must"]
-    assert len(must) == 1
-    assert must[0]["multi_match"]["query"] == "residency"
-    assert "project_name^3" in must[0]["multi_match"]["fields"]
-    assert "promoter_name^1" in must[0]["multi_match"]["fields"]
+    assert bool_q["minimum_should_match"] == 1
+    should = bool_q["should"]
+    multi = next(clause["multi_match"] for clause in should if "multi_match" in clause)
+    assert multi["query"] == "residency"
+    assert "project_name^4" in multi["fields"]
+    assert "promoter_name^3" in multi["fields"]
+    assert {"term": {"project_name.keyword": {"value": "residency", "boost": 140}}} in should
+    assert body["sort"] == [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}]
 
     # filter block checks
     filters = bool_q["filter"]
@@ -149,10 +182,13 @@ def test_build_project_search_filters_and_relevance():
 def test_build_suggest():
     body = build_suggest("shiva", size=5)
     assert body["size"] == 5
-    assert "match_phrase_prefix" in body["query"]
-    assert body["query"]["match_phrase_prefix"]["project_name"]["query"] == "shiva"
+    should = body["query"]["bool"]["should"]
+    assert any(clause.get("match_phrase_prefix", {}).get("project_name", {}).get("query") == "shiva" for clause in should)
+    assert any("promoter_name" in clause.get("match_phrase_prefix", {}) for clause in should)
+    assert any("district" in clause.get("prefix", {}) for clause in should)
+    assert body["sort"] == [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}]
     with pytest.raises(AppError):
-        build_suggest("s")  # < 2 chars
+        build_suggest("s")
 
 
 def test_build_facets():
