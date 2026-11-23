@@ -134,3 +134,53 @@ async def test_all_25_routes_and_root():
             # 26. Query Console
             r = await client.post("/api/query/gujrat_rera_data", json={"query": {"match_all": {}}, "size": 1})
             assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_route_validation_edge_cases():
+    async with lifespan(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # Invalid sort field
+            r = await client.get("/api/projects/search?sort=invalid_field:asc")
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
+            # Size > 100 limit
+            r = await client.get("/api/projects/search?size=101")
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
+            # Suggest q < 2 characters
+            r = await client.get("/api/projects/suggest?q=a")
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
+            # Page from + size > 10000 window limit
+            r = await client.get("/api/projects/page?page=501&size=20")
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
+            # Search-after missing session
+            r = await client.get("/api/projects/search-after?pit=true&session=invalid_session_123")
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "session_expired"
+
+            # Forbidden index access
+            r = await client.get("/api/indices/other_index/mapping")
+            assert r.status_code == 403
+            assert r.json()["error"]["code"] == "forbidden"
+
+            # Forbidden index console query
+            r = await client.post("/api/query/other_index", json={"query": {"match_all": {}}})
+            assert r.status_code == 403
+            assert r.json()["error"]["code"] == "forbidden"
+
+            # Console script query rejection
+            r = await client.post(
+                "/api/query/gujrat_rera_data",
+                json={"query": {"bool": {"filter": [{"script": {"script": "doc['price'].value"}}]}}},
+            )
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+            assert "script" in r.json()["error"]["message"]

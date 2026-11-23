@@ -72,3 +72,80 @@ async def test_session_expired_error():
             assert r.status_code == 400
             err = r.json().get("error", {})
             assert err.get("code") == "session_expired"
+
+
+@pytest.mark.asyncio
+async def test_es_connection_error_handler(monkeypatch):
+    from elasticsearch import ConnectionError as ESConnectionError
+
+    async with lifespan(app):
+        async def mock_search(*args, **kwargs):
+            raise ESConnectionError("Connection refused")
+
+        monkeypatch.setattr(app.state.es.client, "search", mock_search)
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/api/projects/search?q=test")
+            assert r.status_code == 503
+            err = r.json().get("error", {})
+            assert err.get("code") == "es_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_es_timeout_error_handler(monkeypatch):
+    from elastic_transport import ConnectionTimeout
+
+    async with lifespan(app):
+        async def mock_search(*args, **kwargs):
+            raise ConnectionTimeout("Connection timed out")
+
+        monkeypatch.setattr(app.state.es.client, "search", mock_search)
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/api/projects/search?q=test")
+            assert r.status_code == 504
+            err = r.json().get("error", {})
+            assert err.get("code") == "timeout"
+
+
+@pytest.mark.asyncio
+async def test_es_api_error_handler(monkeypatch):
+    from types import SimpleNamespace
+    from elasticsearch import ApiError
+
+    async with lifespan(app):
+        async def mock_search(*args, **kwargs):
+            raise ApiError("Internal ES Error", meta=SimpleNamespace(status=500), body={})
+
+        monkeypatch.setattr(app.state.es.client, "search", mock_search)
+
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            r = await client.get("/api/projects/search?q=test")
+            assert r.status_code == 502
+            err = r.json().get("error", {})
+            assert err.get("code") == "es_error"
+
+
+@pytest.mark.asyncio
+async def test_degraded_discovery_when_es_down(monkeypatch):
+    from backend.es_client import ESManager
+
+    manager = ESManager()
+
+    async def fail(*args, **kwargs):
+        raise Exception("Cluster unreachable")
+
+    monkeypatch.setattr(manager.client, "info", fail)
+    monkeypatch.setattr(manager.client.cluster, "health", fail)
+    monkeypatch.setattr(manager.client.cat, "indices", fail)
+    monkeypatch.setattr(manager.client.indices, "get_mapping", fail)
+    monkeypatch.setattr(manager.client, "field_caps", fail)
+
+    res = await manager.discover()
+    assert res["ready"] is False
+    assert "info" in res["errors"]
+    assert "cluster_health" in res["errors"]
+    await manager.close()

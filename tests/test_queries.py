@@ -18,6 +18,7 @@ from backend.queries import (
     extract_sections,
     compute_casing_collisions,
     CORE_FIELDS,
+    PAGE_SOURCE,
     DISABLED_OBJECTS,
     HIGHLIGHT_PRE,
     HIGHLIGHT_POST,
@@ -233,3 +234,46 @@ def test_compute_casing_collisions():
     norms = {c["normalized"] for c in coll}
     assert "ahmedabad" in norms
     assert "rajkot" in norms
+
+
+def test_build_page():
+    body = build_page(page=2, size=15)
+    assert body["from"] == 15
+    assert body["size"] == 15
+    assert body["_source"] == PAGE_SOURCE
+    assert body["sort"] == [{"projectId": "asc"}]
+    assert body["query"] == {"match_all": {}}
+
+
+def test_build_search_after():
+    body = build_search_after(cursor="[573]", size=25)
+    assert body["size"] == 25
+    assert body["search_after"] == [573]
+    assert body["sort"] == [{"projectId": "asc"}]
+    assert "pit" not in body
+
+    body_without_cursor = build_search_after(cursor=None, size=10)
+    assert "search_after" not in body_without_cursor
+
+
+def test_build_project_search_promoter_reg_no_and_doc_range():
+    body = build_project_search(
+        promoter="SHIVALIK DEVELOPERS",
+        reg_no="PR/GJ/AHMEDABAD/123",
+        min_documents=10,
+        max_documents=50,
+        start_from="2020-01-01",
+        sort="project_name.keyword:asc",
+    )
+    filters = body["query"]["bool"]["filter"]
+    assert {"term": {"promoter_name.keyword": "SHIVALIK DEVELOPERS"}} in filters
+    assert {"term": {"reg_no": "PR/GJ/AHMEDABAD/123"}} in filters
+    assert {"range": {"scrape_status.documents": {"gte": 10, "lte": 50}}} in filters
+
+    # single-bound start_date range
+    start_r = next(f["range"]["start_date"] for f in filters if "range" in f and "start_date" in f["range"])
+    assert start_r["gte"] == "01-01-2020"
+    assert "lte" not in start_r
+
+    # explicit sort overrides default relevance/projectId sort
+    assert body["sort"] == [{"project_name.keyword": "asc"}, {"projectId": "asc"}]
