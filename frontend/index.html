@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
+  <title>Gujrat RERA Explorer</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-mark">GR</div>
+      <div class="brand-text">
+        <h1>Gujrat RERA Explorer</h1>
+        <p class="brand-sub">Read-only Elasticsearch teaching demo</p>
+      </div>
+    </div>
+    <div class="header-meta">
+      <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
+      <span class="pill pill-status is-unknown" id="cluster-pill">
+        <span class="dot"></span><span class="pill-label">checking…</span>
+      </span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab is-active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="projects">Projects</button>
+    <button class="tab" data-tab="detail">Project Detail</button>
+    <button class="tab" data-tab="analytics">Analytics</button>
+    <button class="tab" data-tab="quality">Data Quality</button>
+    <button class="tab" data-tab="pagination">Pagination &amp; Export</button>
+    <button class="tab" data-tab="mapping">Mapping &amp; Indices</button>
+    <button class="tab" data-tab="ops">Ops</button>
+    <button class="tab" data-tab="console">Console</button>
+  </nav>
+
+  <main id="main">
+    <section class="panel is-active" data-panel="dashboard">
+      <div class="panel-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p>Live cluster and index facts, verified at runtime — never hard-coded.</p>
+        </div>
+        <button class="btn btn-ghost" id="refresh-dashboard">Refresh</button>
+      </div>
+      <div id="dashboard-body" class="stack">
+        <div class="loading">Loading cluster facts…</div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="projects">
+      <div class="panel-head">
+        <div>
+          <h2>Projects</h2>
+          <p>Full-text search with filters, safe highlighting and live facet counts.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn btn-ghost" type="button" id="projects-reset">Reset</button>
+          <button class="btn btn-primary" type="button" id="projects-search">Search</button>
+        </div>
+      </div>
+      <div class="projects-layout">
+        <aside class="facets">
+          <div class="facets-head">Facets</div>
+          <div id="facets-body"><div class="facets-loading">Loading facets…</div></div>
+        </aside>
+        <div class="projects-main">
+          <form class="filters" id="projects-form">
+            <div class="field field-wide">
+              <label for="q">Search project / promoter</label>
+              <div class="suggest-wrap">
+                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" />
+                <div class="suggest-box" id="suggest-box" hidden></div>
+              </div>
+            </div>
+            <div class="field"><label for="f-district">District</label><select id="f-district"></select></div>
+            <div class="field"><label for="f-taluka">Taluka</label><select id="f-taluka"></select></div>
+            <div class="field"><label for="f-type">Project type</label><select id="f-type"></select></div>
+            <div class="field"><label for="f-status">Status</label><select id="f-status"></select></div>
+            <div class="field"><label for="f-promoter">Promoter</label><select id="f-promoter"></select></div>
+            <div class="field"><label for="f-price">Exact price</label><select id="f-price"></select></div>
+            <div class="field"><label for="f-price-prefix">Price prefix</label><input id="f-price-prefix" type="text" placeholder="10.00" /></div>
+            <div class="field"><label for="f-start-from">Start date from</label><input id="f-start-from" type="date" /></div>
+            <div class="field"><label for="f-start-to">Start date to</label><input id="f-start-to" type="date" /></div>
+            <div class="field"><label for="f-end-from">End date from</label><input id="f-end-from" type="date" /></div>
+            <div class="field"><label for="f-end-to">End date to</label><input id="f-end-to" type="date" /></div>
+            <div class="field"><label for="f-min-docs">Min documents</label><input id="f-min-docs" type="number" min="0" /></div>
+            <div class="field"><label for="f-max-docs">Max documents</label><input id="f-max-docs" type="number" min="0" /></div>
+            <div class="field">
+              <label for="f-complete">Scrape complete</label>
+              <select id="f-complete"><option value="">Any</option><option value="true">true</option><option value="false">false</option></select>
+            </div>
+            <div class="field">
+              <label for="f-downloaded">Docs downloaded</label>
+              <select id="f-downloaded"><option value="">Any</option><option value="true">true</option><option value="false">false</option></select>
+            </div>
+            <div class="field">
+              <label for="f-sort">Sort</label>
+              <select id="f-sort">
+                <option value="">projectId (asc)</option>
+                <option value="project_name.keyword:asc">project name ↑</option>
+                <option value="project_name.keyword:desc">project name ↓</option>
+                <option value="start_date:desc">start date ↓</option>
+                <option value="start_date:asc">start date ↑</option>
+                <option value="scrape_status.documents:desc">documents ↓</option>
+                <option value="district:asc">district ↑</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-size">Page size</label>
+              <select id="f-size"><option>20</option><option>50</option><option>100</option></select>
+            </div>
+          </form>
+          <div class="result-meta" id="projects-meta"></div>
+          <div id="projects-results" class="stack"></div>
+          <div id="projects-query"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" data-panel="detail">
+      <div class="panel-head">
+        <div>
+          <h2>Project Detail</h2>
+          <p>Core fields plus the five non-indexed (<code>enabled:false</code>) section cards.</p>
+        </div>
+        <div class="head-actions">
+          <div class="inline-input">
+            <input id="detail-id" type="text" placeholder="projectId e.g. 573" />
+            <button class="btn btn-primary" type="button" id="detail-load">Load</button>
+          </div>
+          <button class="btn btn-ghost" type="button" id="detail-back">Back to Projects</button>
+        </div>
+      </div>
+      <div id="detail-body" class="stack">
+        <div class="placeholder">Open a project from the Projects tab, or enter a projectId above.</div>
+      </div>
+    </section>
+    <section class="panel" data-panel="analytics">
+      <div class="panel-head">
+        <div>
+          <h2>Analytics</h2>
+          <p>Terms aggregations and yearly registration histograms computed by Elasticsearch.</p>
+        </div>
+        <button class="btn btn-ghost" type="button" id="analytics-refresh">Refresh</button>
+      </div>
+      <div id="analytics-body" class="stack">
+        <div class="placeholder">Open this tab to load analytics.</div>
+      </div>
+    </section>
+    <section class="panel" data-panel="quality">
+      <div class="panel-head">
+        <div>
+          <h2>Data Quality</h2>
+          <p>Missing fields, scrape coverage, casing collisions and a dry-run pipeline simulation.</p>
+        </div>
+        <button class="btn btn-ghost" type="button" id="quality-refresh">Refresh</button>
+      </div>
+      <div class="stack">
+        <div id="quality-summary"></div>
+        <div class="grid-2">
+          <div id="quality-missing"></div>
+          <div id="quality-scrape"></div>
+        </div>
+        <div id="quality-collisions"></div>
+        <div class="card note">
+          <div class="card-head"><h3>Malformed date caveat</h3></div>
+          <p>
+            Dates are stored as <code>dd-MM-yyyy</code> keyword strings with an explicit
+            <code>format</code> on the date fields. A value that does not match the pattern is not
+            silently coerced — date range queries and histograms simply exclude it. Treat the
+            histograms as coverage of well-formed dates, not a completeness guarantee.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Ingest pipeline simulation</h3></div>
+          <p class="muted small">
+            Dry-run only (<code>_simulate</code>). Nothing is indexed or modified. Default pipeline
+            <code>gujrat_normalize_pipeline</code>; a missing pipeline reports <code>pipeline_missing</code>.
+          </p>
+          <textarea id="pipeline-source" class="code-input" rows="6" spellcheck="false">{
+  "project_name": "  LOTUS RESIDENCY ",
+  "district": " ahmedabad ",
+  "price": "1.67 Crore Onwards"
+}</textarea>
+          <div class="head-actions">
+            <button class="btn btn-primary" type="button" id="pipeline-run">Simulate</button>
+          </div>
+          <div id="pipeline-output"></div>
+        </div>
+      </div>
+    </section>
+    <section class="panel" data-panel="pagination">
+      <div class="placeholder" data-placeholder="pagination">Pagination &amp; Export arrive in Phase 4.</div>
+    </section>
+    <section class="panel" data-panel="mapping">
+      <div class="placeholder" data-placeholder="mapping">Mapping &amp; Indices arrive in Phase 5.</div>
+    </section>
+    <section class="panel" data-panel="ops">
+      <div class="placeholder" data-placeholder="ops">Ops arrives in Phase 5.</div>
+    </section>
+    <section class="panel" data-panel="console">
+      <div class="placeholder" data-placeholder="console">The guarded console arrives in Phase 5.</div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    Read-only demo. Timings are local wall-clock; <code>es_took_ms</code> is the server-side measurement.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
