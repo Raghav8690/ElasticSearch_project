@@ -76,6 +76,29 @@ def query_tokens(q: str | None) -> list[str]:
     return [token.lower() for token in QUERY_TOKEN_RE.findall(q or "") if len(token) >= 2]
 
 
+def _term_clause(field: str, value: Any, *, boost: float | None = None) -> dict[str, Any]:
+    spec: dict[str, Any] = {"value": value, "case_insensitive": True}
+    if boost is not None:
+        spec["boost"] = boost
+    return {"term": {field: spec}}
+
+
+def _prefix_clause(field: str, value: Any, *, boost: float | None = None) -> dict[str, Any]:
+    spec: dict[str, Any] = {"value": value, "case_insensitive": True}
+    if boost is not None:
+        spec["boost"] = boost
+    return {"prefix": {field: spec}}
+
+
+def _text_filter(field: str, value: Any) -> dict[str, Any]:
+    return {
+        "bool": {
+            "should": [_term_clause(field, value), _prefix_clause(field, value)],
+            "minimum_should_match": 1,
+        }
+    }
+
+
 def extract_project_address(source: dict[str, Any] | None) -> str:
     profile = (source or {}).get("Project Profile") or {}
     if not isinstance(profile, dict):
@@ -141,7 +164,18 @@ def _build_relevance_clause(q: str) -> dict[str, Any]:
         ("reg_no", 100),
     ]
     for field, boost in exact_fields:
-        should.append({"term": {field: {"value": text, "boost": boost}}})
+        should.append(_term_clause(field, text, boost=boost))
+
+    prefix_fields = [
+        ("project_name.keyword", 20),
+        ("promoter_name.keyword", 16),
+        ("district", 12),
+        ("taluka", 10),
+        ("project_type", 20),
+        ("reg_no", 16),
+    ]
+    for field, boost in prefix_fields:
+        should.append(_prefix_clause(field, text, boost=boost))
 
     should.append({"match_phrase": {"project_name": {"query": text, "boost": 90}}})
     should.append({"match_phrase": {"promoter_name": {"query": text, "boost": 70}}})
@@ -292,21 +326,21 @@ def build_project_search(
 
     filters: list[dict[str, Any]] = []
     if district:
-        filters.append({"term": {"district": district}})
+        filters.append(_text_filter("district", district))
     if taluka:
-        filters.append({"term": {"taluka": taluka}})
+        filters.append(_text_filter("taluka", taluka))
     if project_type:
-        filters.append({"term": {"project_type": project_type}})
+        filters.append(_text_filter("project_type", project_type))
     if project_status:
-        filters.append({"term": {"project_status": project_status}})
+        filters.append(_text_filter("project_status", project_status))
     if promoter:
-        filters.append({"term": {"promoter_name.keyword": promoter}})
+        filters.append(_text_filter("promoter_name.keyword", promoter))
     if reg_no:
-        filters.append({"term": {"reg_no": reg_no}})
+        filters.append(_text_filter("reg_no", reg_no))
     if price:
-        filters.append({"term": {"price": price}})
+        filters.append(_text_filter("price", price))
     if price_prefix:
-        filters.append({"prefix": {"price": price_prefix}})
+        filters.append(_prefix_clause("price", price_prefix))
 
     start_range = _date_range(start_from, start_to)
     if start_range:
@@ -367,12 +401,12 @@ def build_suggest(q: str, size: int = 8) -> dict[str, Any]:
         [
             {"match_phrase_prefix": {"project_name": {"query": text, "boost": 8, "max_expansions": 20}}},
             {"match_phrase_prefix": {"promoter_name": {"query": text, "boost": 5, "max_expansions": 20}}},
-            {"prefix": {"project_name.keyword": {"value": text, "boost": 6}}},
-            {"prefix": {"promoter_name.keyword": {"value": text, "boost": 4}}},
-            {"prefix": {"district": {"value": text, "boost": 4}}},
-            {"prefix": {"taluka": {"value": text, "boost": 3}}},
-            {"prefix": {"project_type": {"value": text, "boost": 3}}},
-            {"prefix": {"reg_no": {"value": text, "boost": 3}}},
+            _prefix_clause("project_name.keyword", text, boost=6),
+            _prefix_clause("promoter_name.keyword", text, boost=4),
+            _prefix_clause("district", text, boost=4),
+            _prefix_clause("taluka", text, boost=3),
+            _prefix_clause("project_type", text, boost=3),
+            _prefix_clause("reg_no", text, boost=3),
         ]
     )
     return {

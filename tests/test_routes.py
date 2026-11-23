@@ -64,6 +64,24 @@ async def test_all_25_routes_and_root():
             assert suggestions
             assert all("id" in item and "label" in item and "match_label" in item for item in suggestions)
 
+            # 10b. Case-insensitive exact + prefix matching
+            for value in ("plot", "Plot", "PLOT", "PLot"):
+                r = await client.get("/api/projects/search", params={"q": value, "size": 5})
+                assert r.status_code == 200
+                assert r.json()["data"]["hits"]
+
+                r = await client.get(
+                    "/api/projects/search", params={"project_type": value, "size": 5}
+                )
+                assert r.status_code == 200
+                hits = r.json()["data"]["hits"]
+                assert hits
+                assert all("plot" in str(hit.get("project_type", "")).lower() for hit in hits)
+
+                r = await client.get("/api/projects/suggest", params={"q": value})
+                assert r.status_code == 200
+                assert r.json()["data"]["suggestions"]
+
             # 11. Facets
             r = await client.get("/api/projects/facets")
             assert r.status_code == 200

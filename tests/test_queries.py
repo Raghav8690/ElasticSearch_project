@@ -149,17 +149,41 @@ def test_build_project_search_filters_and_relevance():
     assert multi["query"] == "residency"
     assert "project_name^4" in multi["fields"]
     assert "promoter_name^3" in multi["fields"]
-    assert {"term": {"project_name.keyword": {"value": "residency", "boost": 140}}} in should
+    assert {
+        "term": {
+            "project_name.keyword": {
+                "value": "residency",
+                "boost": 140,
+                "case_insensitive": True,
+            }
+        }
+    } in should
+    assert {
+        "prefix": {"project_type": {"value": "residency", "boost": 20, "case_insensitive": True}}
+    } in should
     assert body["sort"] == [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}]
 
     # filter block checks
     filters = bool_q["filter"]
-    assert {"term": {"district": "Ahmedabad"}} in filters
-    assert {"term": {"taluka": "Ahmedabad City"}} in filters
-    assert {"term": {"project_type": "Residential/Group Housing"}} in filters
-    assert {"term": {"project_status": "Ongoing"}} in filters
-    assert {"term": {"price": "20.97 Lakh Onwards"}} in filters
-    assert {"prefix": {"price": "20.9"}} in filters
+    filter_clauses = [
+        clause
+        for wrapper in filters
+        for clause in wrapper.get("bool", {}).get("should", [])
+    ]
+
+    def has_case_insensitive_clause(kind: str, field: str, value: str) -> bool:
+        return any(
+            clause.get(kind, {}).get(field, {}).get("value") == value
+            and clause.get(kind, {}).get(field, {}).get("case_insensitive") is True
+            for clause in filter_clauses
+        )
+
+    assert has_case_insensitive_clause("term", "district", "Ahmedabad")
+    assert has_case_insensitive_clause("term", "taluka", "Ahmedabad City")
+    assert has_case_insensitive_clause("term", "project_type", "Residential/Group Housing")
+    assert has_case_insensitive_clause("term", "project_status", "Ongoing")
+    assert has_case_insensitive_clause("term", "price", "20.97 Lakh Onwards")
+    assert {"prefix": {"price": {"value": "20.9", "case_insensitive": True}}} in filters
     assert {"term": {"scrape_status.complete": True}} in filters
     assert {"term": {"scrape_status.docs_downloaded": False}} in filters
 
@@ -187,9 +211,44 @@ def test_build_suggest():
     assert any(clause.get("match_phrase_prefix", {}).get("project_name", {}).get("query") == "shiva" for clause in should)
     assert any("promoter_name" in clause.get("match_phrase_prefix", {}) for clause in should)
     assert any("district" in clause.get("prefix", {}) for clause in should)
+    assert any(
+        clause.get("prefix", {}).get("district", {}).get("case_insensitive") is True
+        for clause in should
+    )
     assert body["sort"] == [{"_score": {"order": "desc"}}, {"projectId": {"order": "asc"}}]
     with pytest.raises(AppError):
         build_suggest("s")
+
+
+@pytest.mark.parametrize("value", ["plot", "Plot", "PLOT", "PLot"])
+def test_case_insensitive_exact_and_prefix_queries(value):
+    body = build_project_search(q=value, project_type=value, price_prefix=value)
+    bool_q = body["query"]["bool"]
+    should = bool_q["should"]
+    filters = bool_q["filter"]
+    filter_clauses = [
+        clause
+        for wrapper in filters
+        for clause in wrapper.get("bool", {}).get("should", [])
+    ]
+
+    assert {
+        "term": {
+            "project_type": {"value": value, "boost": 140, "case_insensitive": True}
+        }
+    } in should
+    assert {
+        "prefix": {"project_type": {"value": value, "boost": 20, "case_insensitive": True}}
+    } in should
+    assert {"term": {"project_type": {"value": value, "case_insensitive": True}}} in filter_clauses
+    assert {"prefix": {"project_type": {"value": value, "case_insensitive": True}}} in filter_clauses
+    assert {"prefix": {"price": {"value": value, "case_insensitive": True}}} in filters
+
+    suggest_body = build_suggest(value)
+    suggest_should = suggest_body["query"]["bool"]["should"]
+    assert {
+        "prefix": {"project_type": {"value": value, "boost": 3, "case_insensitive": True}}
+    } in suggest_should
 
 
 def test_build_facets():
@@ -266,8 +325,30 @@ def test_build_project_search_promoter_reg_no_and_doc_range():
         sort="project_name.keyword:asc",
     )
     filters = body["query"]["bool"]["filter"]
-    assert {"term": {"promoter_name.keyword": "SHIVALIK DEVELOPERS"}} in filters
-    assert {"term": {"reg_no": "PR/GJ/AHMEDABAD/123"}} in filters
+    filter_clauses = [
+        clause
+        for wrapper in filters
+        for clause in wrapper.get("bool", {}).get("should", [])
+    ]
+    assert {
+        "term": {
+            "promoter_name.keyword": {
+                "value": "SHIVALIK DEVELOPERS",
+                "case_insensitive": True,
+            }
+        }
+    } in filter_clauses
+    assert {
+        "prefix": {
+            "promoter_name.keyword": {
+                "value": "SHIVALIK DEVELOPERS",
+                "case_insensitive": True,
+            }
+        }
+    } in filter_clauses
+    assert {
+        "term": {"reg_no": {"value": "PR/GJ/AHMEDABAD/123", "case_insensitive": True}}
+    } in filter_clauses
     assert {"range": {"scrape_status.documents": {"gte": 10, "lte": 50}}} in filters
 
     # single-bound start_date range
