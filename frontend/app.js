@@ -116,6 +116,66 @@ function errorCard(title, err) {
   return h("div", { class: "error-card" }, h("h3", { text: title }), h("p", { text: message }));
 }
 
+function loading(text) {
+  return h("div", { class: "loading", "aria-busy": "true", text });
+}
+
+async function withBusy(button, busyLabel, task) {
+  if (!button) return task();
+  const original = button.textContent;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = busyLabel;
+  try {
+    return await task();
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = original;
+  }
+}
+
+function copyButton(getText) {
+  const label = h("span", { text: "Copy", "aria-live": "polite" });
+  const button = h("button", { class: "btn btn-ghost copy-btn", type: "button" }, label);
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(getText());
+      label.textContent = "Copied";
+    } catch {
+      label.textContent = "Copy failed";
+    }
+    setTimeout(() => { label.textContent = "Copy"; }, 1400);
+  });
+  return button;
+}
+
+function setFieldError(input, errorId, message) {
+  const error = document.getElementById(errorId);
+  if (input) {
+    if (message) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  }
+  if (error) error.textContent = message || "";
+}
+
+function validateJsonInput(input, errorId, label) {
+  if (!input) return true;
+  const text = input.value.trim();
+  let message = "";
+  if (!text) {
+    message = `${label} is required.`;
+  } else {
+    try {
+      JSON.parse(text);
+    } catch (err) {
+      message = `Invalid JSON: ${err.message}`;
+    }
+  }
+  setFieldError(input, errorId, message);
+  return !message;
+}
+
 function setStatusPill(status) {
   const pill = document.getElementById("cluster-pill");
   if (!pill) return;
@@ -152,7 +212,8 @@ function indexCard(idx, status) {
       kv("Documents", idx.docs != null ? Number(idx.docs).toLocaleString() : "—"),
       kv("Store size", idx.store || "—"),
       kv("Shards", `${idx.pri ?? "—"} primary / ${idx.rep ?? "—"} replica`),
-      kv("Status", idx.status || "—"),
+      kv("Index status", idx.status || "—"),
+      kv("Cluster status", status),
       kv("Configured", idx.configured ? "yes" : "no")
     )
   );
@@ -190,9 +251,10 @@ function capabilitiesCard(caps, capsError) {
           "div",
           { class: "cap-body" },
           h("div", { class: "cap-name" }, h("code", { text: name })),
+          h("div", { class: "cap-reason", text: feature.available ? "supported" : "unsupported" }),
           h("div", {
-            class: "cap-reason",
-            text: feature.available ? "available" : feature.reason || "unavailable",
+            class: "cap-detail",
+            text: feature.available ? "Allowed by the read-only explorer." : feature.reason || "Blocked by the read-only explorer.",
           })
         )
       )
@@ -227,19 +289,24 @@ function renderDashboard(root, ctx) {
     h(
       "div",
       { class: "kpi-grid" },
-      kpi("Cluster status", status, statusClass(status), `${cluster.nodes ?? "—"} node(s) in cluster`),
-      kpi("Elasticsearch", health.version || "unknown", "", "server version"),
       kpi(
         "Documents",
         idx && idx.docs != null ? Number(idx.docs).toLocaleString() : "—",
         "",
         "in the configured index"
       ),
+      kpi("Store size", idx && idx.store ? idx.store : "—", "", "configured index storage"),
+      kpi(
+        "Primary shards",
+        idx && idx.pri != null ? idx.pri : "—",
+        "",
+        `${idx && idx.rep != null ? idx.rep : "—"} replica(s) configured`
+      ),
       kpi(
         "Unassigned shards",
         health.unassigned_shards ?? "—",
         health.unassigned_shards ? "is-warn" : "is-green",
-        `${health.active_primary_shards ?? "—"} active primaries`
+        `${health.active_primary_shards ?? "—"} active primaries · cluster ${status}`
       )
     ),
     h("div", { class: "grid-2" }, indexCard(idx, status), yellowCard(health)),
@@ -271,7 +338,7 @@ async function loadDashboard(force = false) {
   const body = document.getElementById("dashboard-body");
   if (!body) return;
   if (!state.dashboardLoaded || force) {
-    body.replaceChildren(h("div", { class: "loading", text: "Loading cluster facts…" }));
+    body.replaceChildren(loading("Loading cluster facts…"));
   }
   const [health, config, caps] = await Promise.allSettled([
     API.get("/api/health"),
@@ -313,11 +380,13 @@ function isSafeUrl(value) {
 
 function queryDetails(queryUsed, label = "Query used") {
   if (!queryUsed) return document.createTextNode("");
+  const pre = h("pre", { text: JSON.stringify(queryUsed, null, 2) });
   return h(
     "details",
     { class: "details" },
     h("summary", { text: label }),
-    h("pre", { text: JSON.stringify(queryUsed, null, 2) })
+    h("div", { class: "code-actions" }, copyButton(() => pre.textContent)),
+    pre
   );
 }
 
@@ -330,7 +399,7 @@ function renderHighlighted(text, fragments) {
   let match;
   while ((match = regex.exec(raw)) !== null) {
     if (match.index > last) parts.push(document.createTextNode(raw.slice(last, match.index)));
-    parts.push(h("em", {}, match[1]));
+    parts.push(h("mark", {}, match[1]));
     last = regex.lastIndex;
   }
   if (last < raw.length) parts.push(document.createTextNode(raw.slice(last)));
@@ -452,20 +521,21 @@ function resultsTable(hits) {
   const columns = ["ID", "Project", "District", "Taluka", "Type", "Status", "Price", "Start", "End", "Docs"];
   const rows = hits.map((hit) => {
     const docs = hit.scrape_status && hit.scrape_status.documents;
+    const name = hit.project_name || "—";
     const open = () => openDetail(hit._id || hit.projectId);
     return h(
       "tr",
       { class: "row-click", onclick: open },
-      h("td", {}, h("span", { class: "mono", text: String(hit._id || hit.projectId || "—") })),
-      h("td", {}, renderHighlighted(hit.project_name, hit.highlight && hit.highlight.project_name)),
+      h("td", { class: "mono", text: String(hit._id || hit.projectId || "—") }),
+      h("td", { class: "truncate", title: String(name) }, renderHighlighted(hit.project_name, hit.highlight && hit.highlight.project_name)),
       h("td", { text: hit.district || "—" }),
       h("td", { text: hit.taluka || "—" }),
       h("td", { text: hit.project_type || "—" }),
       h("td", { text: hit.project_status || "—" }),
-      h("td", { text: hit.price || "—" }),
+      h("td", { class: "num", text: hit.price || "—" }),
       h("td", { text: hit.start_date || "—" }),
       h("td", { text: hit.end_date || "—" }),
-      h("td", { text: docs == null ? "—" : String(docs) })
+      h("td", { class: "num", text: docs == null ? "—" : String(docs) })
     );
   });
   return h(
@@ -485,7 +555,7 @@ async function runSearch() {
   const metaEl = document.getElementById("projects-meta");
   const queryEl = document.getElementById("projects-query");
   if (!results) return;
-  results.replaceChildren(h("div", { class: "loading", text: "Searching…" }));
+  results.replaceChildren(loading("Searching…"));
   if (metaEl) metaEl.replaceChildren();
   if (queryEl) queryEl.replaceChildren();
   try {
@@ -526,37 +596,66 @@ function initSuggest() {
   const input = document.getElementById("q");
   const box = document.getElementById("suggest-box");
   if (!input || !box) return;
+  let items = [];
+  let activeIndex = -1;
+
+  const close = () => {
+    clearTimeout(suggestTimer);
+    items = [];
+    activeIndex = -1;
+    box.hidden = true;
+    box.replaceChildren();
+    input.setAttribute("aria-expanded", "false");
+    input.removeAttribute("aria-activedescendant");
+  };
+
+  const setActive = (index) => {
+    if (!items.length) return;
+    activeIndex = (index + items.length) % items.length;
+    const nodes = Array.from(box.querySelectorAll(".suggest-item"));
+    nodes.forEach((node, i) => {
+      const active = i === activeIndex;
+      node.classList.toggle("is-active", active);
+      node.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    input.setAttribute("aria-activedescendant", `suggest-item-${activeIndex}`);
+    if (nodes[activeIndex]) nodes[activeIndex].scrollIntoView({ block: "nearest" });
+  };
+
+  const choose = (item) => {
+    const id = item.id ?? item.projectId ?? item._id;
+    input.value = item.label || item.project_name || "";
+    close();
+    if (id !== undefined && id !== null && id !== "") openDetail(id);
+    else runSearch();
+  };
+
   input.addEventListener("input", () => {
     clearTimeout(suggestTimer);
     const q = input.value.trim();
     if (q.length < 2) {
-      box.hidden = true;
-      box.replaceChildren();
+      close();
       return;
     }
     suggestTimer = setTimeout(async () => {
       try {
         const res = await API.get("/api/projects/suggest", { q, size: 8 });
-        const items = (res.data && res.data.suggestions) || [];
+        items = (res.data && res.data.suggestions) || [];
         if (!items.length) {
-          box.hidden = true;
-          box.replaceChildren();
+          close();
           return;
         }
         box.replaceChildren(
-          ...items.map((item) =>
+          ...items.map((item, index) =>
             h(
               "button",
               {
+                id: `suggest-item-${index}`,
                 class: "suggest-item",
                 type: "button",
-                onclick: () => {
-                  const id = item.id ?? item.projectId ?? item._id;
-                  input.value = item.label || item.project_name || "";
-                  box.hidden = true;
-                  if (id !== undefined && id !== null && id !== "") openDetail(id);
-                  else runSearch();
-                },
+                role: "option",
+                "aria-selected": "false",
+                onclick: () => choose(item),
               },
               h("span", { class: "suggest-name", text: item.label || item.project_name || "—" }),
               h("span", {
@@ -567,13 +666,33 @@ function initSuggest() {
           )
         );
         box.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        setActive(0);
       } catch {
-        box.hidden = true;
+        close();
       }
     }, 300);
   });
+
+  input.addEventListener("keydown", (event) => {
+    if (box.hidden || !items.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive(activeIndex + 1);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive(activeIndex - 1);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      choose(items[activeIndex >= 0 ? activeIndex : 0]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    }
+  });
+
   document.addEventListener("click", (event) => {
-    if (!box.contains(event.target) && event.target !== input) box.hidden = true;
+    if (!box.contains(event.target) && event.target !== input) close();
   });
 }
 
@@ -766,12 +885,7 @@ function renderDetail(root, res) {
 
   const sectionCards = Object.entries(sections).map(([name, section]) => renderSectionCard(name, section));
 
-  const rawToggle = h(
-    "details",
-    { class: "details" },
-    h("summary", { text: "Raw _source JSON" }),
-    h("pre", { text: JSON.stringify(data.raw || {}, null, 2) })
-  );
+  const rawToggle = queryDetails(data.raw || {}, "Raw _source JSON");
 
   root.append(coreCard, ...sectionCards, rawToggle, queryDetails(meta.query_used));
 }
@@ -779,7 +893,7 @@ function renderDetail(root, res) {
 async function loadDetail(projectId) {
   const body = document.getElementById("detail-body");
   if (!body) return;
-  body.replaceChildren(h("div", { class: "loading", text: `Loading project ${projectId}…` }));
+  body.replaceChildren(loading(`Loading project ${projectId}…`));
   try {
     const res = await API.get(`/api/projects/${encodeURIComponent(projectId)}`);
     renderDetail(body, res);
@@ -804,7 +918,7 @@ function cssVar(name, fallback) {
 
 const CHART_PALETTE = [
   ["--accent", "#0284c7"],
-  ["--chart-green", "#4ade80"],
+  ["--green", "#059669"],
   ["--yellow", "#d97706"],
   ["--cyan", "#0891b2"],
   ["--orange", "#ea580c"],
@@ -850,8 +964,8 @@ function chartConfig(labels, values, opts = {}) {
           backgroundColor: cssVar("--text", "#0f172a"),
           borderColor: cssVar("--border", "#cbd5e1"),
           borderWidth: 1,
-          titleColor: "#ffffff",
-          bodyColor: "#f1f5f9",
+          titleColor: cssVar("--bg-elev", "#ffffff"),
+          bodyColor: cssVar("--bg-elev-2", "#f8fafc"),
         },
       },
       scales: {
@@ -870,18 +984,18 @@ function chartConfig(labels, values, opts = {}) {
   };
 }
 
-function fallbackTable(labels, values) {
+function fallbackTable(labels, values, hidden = false) {
   return h(
     "div",
-    { class: "table-wrap" },
+    { class: "table-wrap fallbackTable", hidden },
     h(
       "table",
       { class: "data-table compact" },
-      h("thead", {}, h("tr", {}, h("th", { text: "Key" }), h("th", { text: "Count" }))),
+      h("thead", {}, h("tr", {}, h("th", { text: "Key" }), h("th", { class: "num", text: "Count" }))),
       h(
         "tbody",
         {},
-        ...labels.map((label, i) => h("tr", {}, h("td", { text: label }), h("td", { text: Number(values[i]).toLocaleString() })))
+        ...labels.map((label, i) => h("tr", {}, h("td", { text: label }), h("td", { class: "num", text: Number(values[i]).toLocaleString() })))
       )
     )
   );
@@ -898,16 +1012,17 @@ function chartCard(title, labels, values, opts = {}) {
       h("span", { class: "tag tag-muted", text: `${values.length} buckets` })
     )
   );
+  const table = fallbackTable(labels, values, Boolean(window.Chart && labels.length));
   if (!labels.length) {
-    card.append(h("p", { class: "muted small", text: "No buckets returned." }));
+    card.append(h("p", { class: "muted small", text: "No buckets returned." }), table);
   } else if (window.Chart) {
     const wrap = h("div", { class: "chart-wrap" });
     const canvas = document.createElement("canvas");
     wrap.append(canvas);
-    card.append(wrap);
+    card.append(wrap, table);
     pendingCharts.push({ canvas, labels, values, opts });
   } else {
-    card.append(fallbackTable(labels, values));
+    card.append(table);
   }
   return card;
 }
@@ -975,12 +1090,12 @@ function renderAnalytics(root, ctx) {
 
   const grid = h("div", { class: "charts-grid" });
   grid.append(
-    chartCard("Districts", ...Object.values(bucketsToXY((aggs.districts || {}).buckets)), { horizontal: true, label: "projects" }),
-    chartCard("Project types", ...Object.values(bucketsToXY((aggs.project_types || {}).buckets))),
-    chartCard("Statuses", ...Object.values(bucketsToXY((aggs.project_statuses || {}).buckets))),
-    chartCard("Top promoters", ...Object.values(bucketsToXY((aggs.top_promoters || {}).buckets)), { horizontal: true }),
-    chartCard("Start year", ...Object.values(dateBucketsToXY((dateAggs.start_years || {}).buckets))),
-    chartCard("End year", ...Object.values(dateBucketsToXY((dateAggs.end_years || {}).buckets)))
+    chartCard("Projects by district", ...Object.values(bucketsToXY((aggs.districts || {}).buckets)), { horizontal: true, label: "projects" }),
+    chartCard("Projects by taluka", ...Object.values(bucketsToXY((aggs.talukas || {}).buckets)), { horizontal: true, label: "projects" }),
+    chartCard("Projects by status", ...Object.values(bucketsToXY((aggs.project_statuses || {}).buckets)), { label: "projects" }),
+    chartCard("Projects by type", ...Object.values(bucketsToXY((aggs.project_types || {}).buckets)), { label: "projects" }),
+    chartCard("Registrations by year (start date)", ...Object.values(dateBucketsToXY((dateAggs.start_years || {}).buckets)), { label: "projects" }),
+    chartCard("Start dates by year", ...Object.values(dateBucketsToXY((dateAggs.end_years || {}).buckets)), { label: "projects" })
   );
   if (!window.Chart) {
     root.append(
@@ -990,7 +1105,17 @@ function renderAnalytics(root, ctx) {
       })
     );
   }
-  root.append(grid);
+  root.append(
+    grid,
+    h(
+      "div",
+      { class: "card note" },
+      h("div", { class: "card-head" }, h("h3", { text: "Date coverage caveat" })),
+      h("p", {
+        text: "Yearly histograms cover well-formed dd-MM-yyyy values only. Malformed or empty dates are excluded rather than coerced, so these charts show coverage of valid dates rather than total dataset completeness.",
+      })
+    )
+  );
   flushCharts();
 }
 
@@ -998,7 +1123,7 @@ async function loadAnalytics(force = false) {
   const body = document.getElementById("analytics-body");
   if (!body) return;
   if (analyticsLoaded && !force) return;
-  body.replaceChildren(h("div", { class: "loading", text: "Loading analytics…" }));
+  body.replaceChildren(loading("Loading analytics…"));
   const [overview, dates] = await Promise.allSettled([
     API.get("/api/analytics/overview"),
     API.get("/api/analytics/dates"),
@@ -1031,9 +1156,9 @@ function missingCard(missing, total) {
     return h(
       "tr",
       {},
-      h("td", {}, h("code", { text: label })),
-      h("td", { text: fmtNumber(count) }),
-      h("td", { text: pct != null ? `${pct.toFixed(2)}%` : "—" })
+        h("td", {}, h("code", { text: label })),
+        h("td", { class: "num", text: fmtNumber(count) }),
+        h("td", { class: "num", text: pct != null ? `${pct.toFixed(2)}%` : "—" })
     );
   });
   return h(
@@ -1046,7 +1171,7 @@ function missingCard(missing, total) {
       h(
         "table",
         { class: "data-table compact" },
-        h("thead", {}, h("tr", {}, h("th", { text: "Field" }), h("th", { text: "Missing" }), h("th", { text: "% of docs" }))),
+          h("thead", {}, h("tr", {}, h("th", { text: "Field" }), h("th", { class: "num", text: "Missing" }), h("th", { class: "num", text: "% of docs" }))),
         h("tbody", {}, ...rows)
       )
     )
@@ -1169,7 +1294,7 @@ async function loadQuality(force = false) {
   const summary = document.getElementById("quality-summary");
   if (!summary) return;
   if (qualityLoaded && !force) return;
-  summary.replaceChildren(h("div", { class: "loading", text: "Loading quality checks…" }));
+  summary.replaceChildren(loading("Loading quality checks…"));
   try {
     const res = await API.get("/api/quality/scrape");
     renderQuality(res);
@@ -1182,15 +1307,9 @@ async function loadQuality(force = false) {
 async function runPipeline() {
   const input = document.getElementById("pipeline-source");
   const out = document.getElementById("pipeline-output");
-  if (!out) return;
-  let source;
-  try {
-    source = JSON.parse((input && input.value) || "{}");
-  } catch (err) {
-    out.replaceChildren(h("div", { class: "error-card" }, h("h3", { text: "Invalid JSON" }), h("p", { text: err.message })));
-    return;
-  }
-  out.replaceChildren(h("div", { class: "loading", text: "Simulating…" }));
+  if (!out || !input || !validateJsonInput(input, "pipeline-error", "Pipeline source JSON")) return;
+  const source = JSON.parse(input.value);
+  out.replaceChildren(loading("Simulating…"));
   try {
     const res = await API.post("/api/quality/pipeline-simulate", { source });
     const data = res.data || {};
@@ -1199,12 +1318,7 @@ async function runPipeline() {
         class: "muted small",
         text: `Pipeline: ${data.pipeline_id || "—"} · wall_ms ${(res.meta || {}).wall_ms ?? "—"}`,
       }),
-      h(
-        "details",
-        { class: "details", open: true },
-        h("summary", { text: "Simulation result" }),
-        h("pre", { text: JSON.stringify(data.result || {}, null, 2) })
-      ),
+      queryDetails(data.result || {}, "Simulation result"),
       queryDetails((res.meta || {}).query_used)
     );
   } catch (err) {
@@ -1271,15 +1385,14 @@ async function pagFromSize() {
   const results = document.getElementById("pag-from-results");
   const queryEl = document.getElementById("pag-from-query");
   if (!results) return;
-  results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  results.replaceChildren(loading("Loading…"));
   try {
     const res = await API.get("/api/projects/page", { page, size });
     const data = res.data || {};
     const meta = res.meta || {};
     results.replaceChildren(
       h("p", {
-        class: "muted small",
-        style: "margin-bottom:8px",
+          class: "muted small mb-8",
         text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
       }),
       pagTable(data.hits)
@@ -1295,7 +1408,7 @@ async function pagSearchAfter() {
   const info = document.getElementById("pag-cursor-info");
   const queryEl = document.getElementById("pag-cursor-query");
   if (!results) return;
-  results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  results.replaceChildren(loading("Loading…"));
   try {
     const params = { size: 100 };
     if (pagCursor) params.cursor = JSON.stringify(pagCursor);
@@ -1313,9 +1426,17 @@ async function pagSearchAfter() {
   }
 }
 
+function setPitStatus(text, cls) {
+  const badge = document.getElementById("pit-status");
+  if (!badge) return;
+  badge.textContent = text;
+  badge.className = `tag ${cls}`;
+}
+
 async function pitOpen() {
   const info = document.getElementById("pit-info");
   if (info) info.textContent = "Opening PIT session…";
+  setPitStatus("opening", "tag-yellow");
   try {
     const res = await API.post("/api/pit");
     const data = res.data || {};
@@ -1324,8 +1445,10 @@ async function pitOpen() {
     if (info) {
       info.textContent = `PIT opened: session=${pitSessionId} keep_alive=${data.keep_alive} expires_in=${data.expires_in_seconds}s`;
     }
+    setPitStatus("open", "tag-green");
   } catch (err) {
     if (info) info.textContent = `PIT open failed: ${err.message}`;
+    setPitStatus("error", "tag-red");
   }
 }
 
@@ -1336,7 +1459,7 @@ async function pitNext() {
     if (info) info.textContent = "No PIT session open. Click 'Open PIT' first.";
     return;
   }
-  if (results) results.replaceChildren(h("div", { class: "loading", text: "Loading…" }));
+  if (results) results.replaceChildren(loading("Loading…"));
   try {
     const params = { size: 100, session: pitSessionId, pit: true };
     if (pitCursor) params.cursor = JSON.stringify(pitCursor);
@@ -1364,8 +1487,10 @@ async function pitClose() {
     if (info) info.textContent = `PIT session ${pitSessionId} closed.`;
     pitSessionId = null;
     pitCursor = null;
+    setPitStatus("closed", "tag-muted");
   } catch (err) {
     if (info) info.textContent = `PIT close failed: ${err.message}`;
+    setPitStatus("error", "tag-red");
   }
 }
 
@@ -1403,14 +1528,14 @@ async function runAnalyze() {
   } else {
     payload.analyzer = "standard";
   }
-  out.replaceChildren(h("div", { class: "loading", text: "Analyzing…" }));
+  out.replaceChildren(loading("Analyzing…"));
   try {
     const res = await API.post("/api/analyze", payload);
     const tokens = (res.data && res.data.tokens) || [];
     out.replaceChildren(
       h(
         "div",
-        { class: "table-wrap", style: "margin-top:8px" },
+        { class: "table-wrap mt-8" },
         h(
           "table",
           { class: "data-table compact" },
@@ -1446,7 +1571,7 @@ async function loadMapping(force = false) {
   const aliasesEl = document.getElementById("mapping-aliases");
   const explainEl = document.getElementById("mapping-explain");
   const queryEl = document.getElementById("mapping-query");
-  if (statsEl) statsEl.replaceChildren(h("div", { class: "loading", text: "Loading mapping & stats…" }));
+  if (statsEl) statsEl.replaceChildren(loading("Loading mapping & stats…"));
 
   const index = "gujrat_rera_data";
   const [mappingRes, statsRes, aliasesRes] = await Promise.allSettled([
@@ -1515,7 +1640,7 @@ async function loadMapping(force = false) {
               )
             )
           ),
-          h("p", { class: "muted small", style: "margin-top:8px", text: `Indexed fields are queryable; non-indexed objects exist only in _source · wall_ms ${meta.wall_ms ?? "—"}` })
+          h("p", { class: "muted small mt-8", text: `Indexed fields are queryable; non-indexed objects exist only in _source · wall_ms ${meta.wall_ms ?? "—"}` })
         )
       );
     } else {
@@ -1572,7 +1697,7 @@ async function loadOps(force = false) {
   const healthEl = document.getElementById("ops-health");
   const nodesEl = document.getElementById("ops-nodes");
   const shardsEl = document.getElementById("ops-shards");
-  if (healthEl) healthEl.replaceChildren(h("div", { class: "loading", text: "Loading ops health…" }));
+  if (healthEl) healthEl.replaceChildren(loading("Loading ops health…"));
 
   const [healthRes, nodesRes, shardsRes] = await Promise.allSettled([
     API.get("/api/ops/health"),
@@ -1714,17 +1839,10 @@ async function runConsole() {
   const results = document.getElementById("console-results");
   const metaEl = document.getElementById("console-meta");
   const queryEl = document.getElementById("console-query");
-  if (!results) return;
+  if (!results || !input || !validateJsonInput(input, "console-error", "Query body JSON")) return;
+  const body = JSON.parse(input.value);
 
-  let body;
-  try {
-    body = JSON.parse((input && input.value) || "{}");
-  } catch (err) {
-    results.replaceChildren(h("div", { class: "error-card" }, h("h3", { text: "Invalid JSON" }), h("p", { text: err.message })));
-    return;
-  }
-
-  results.replaceChildren(h("div", { class: "loading", text: "Running query…" }));
+  results.replaceChildren(loading("Running query…"));
   if (metaEl) metaEl.replaceChildren();
   if (queryEl) queryEl.replaceChildren();
 
@@ -1743,14 +1861,7 @@ async function runConsole() {
       );
     }
 
-    results.replaceChildren(
-      h(
-        "details",
-        { class: "details", open: true },
-        h("summary", { text: `Query Result (${hits.length} hits)` }),
-        h("pre", { text: JSON.stringify(data, null, 2) })
-      )
-    );
+    results.replaceChildren(queryDetails(data, `Query Result (${hits.length} hits)`));
 
     if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "Executed query"));
   } catch (err) {
@@ -1761,9 +1872,9 @@ async function runConsole() {
 /* ---------- bootstrap ---------- */
 function initProjects() {
   const searchBtn = document.getElementById("projects-search");
-  if (searchBtn) searchBtn.addEventListener("click", runSearch);
+  if (searchBtn) searchBtn.addEventListener("click", () => withBusy(searchBtn, "Searching…", runSearch));
   const resetBtn = document.getElementById("projects-reset");
-  if (resetBtn) resetBtn.addEventListener("click", resetProjects);
+  if (resetBtn) resetBtn.addEventListener("click", () => withBusy(resetBtn, "Resetting…", resetProjects));
   const form = document.getElementById("projects-form");
   if (form) form.addEventListener("submit", (event) => { event.preventDefault(); runSearch(); });
 
@@ -1773,7 +1884,7 @@ function initProjects() {
     const value = detailId ? detailId.value.trim() : "";
     if (value) loadDetail(value);
   };
-  if (detailLoad) detailLoad.addEventListener("click", triggerDetail);
+  if (detailLoad) detailLoad.addEventListener("click", () => withBusy(detailLoad, "Loading…", triggerDetail));
   if (detailId) {
     detailId.addEventListener("keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); triggerDetail(); }
@@ -1792,22 +1903,36 @@ function initProjects() {
 function initTabs() {
   const tabs = Array.from(document.querySelectorAll(".tab"));
   const panels = Array.from(document.querySelectorAll(".panel"));
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      tabs.forEach((t) => {
-        const isActive = t === tab;
-        t.classList.toggle("is-active", isActive);
-        t.setAttribute("aria-selected", isActive ? "true" : "false");
-      });
-      const name = tab.dataset.tab;
-      panels.forEach((p) => p.classList.toggle("is-active", p.dataset.panel === name));
-      if (name === "dashboard") loadDashboard(true);
-      if (name === "projects") ensureProjects();
-      if (name === "analytics") loadAnalytics();
-      if (name === "quality") loadQuality();
-      if (name === "pagination") ensurePagination();
-      if (name === "mapping") loadMapping();
-      if (name === "ops") loadOps();
+  const activate = (tab) => {
+    tabs.forEach((t) => {
+      const isActive = t === tab;
+      t.classList.toggle("is-active", isActive);
+      t.setAttribute("aria-selected", isActive ? "true" : "false");
+      t.tabIndex = isActive ? 0 : -1;
+    });
+    const name = tab.dataset.tab;
+    panels.forEach((p) => p.classList.toggle("is-active", p.dataset.panel === name));
+    if (name === "dashboard") loadDashboard(true);
+    if (name === "projects") ensureProjects();
+    if (name === "analytics") loadAnalytics();
+    if (name === "quality") loadQuality();
+    if (name === "pagination") ensurePagination();
+    if (name === "mapping") loadMapping();
+    if (name === "ops") loadOps();
+  };
+  tabs.forEach((tab, index) => {
+    tab.tabIndex = tab.classList.contains("is-active") ? 0 : -1;
+    tab.addEventListener("click", () => activate(tab));
+    tab.addEventListener("keydown", (event) => {
+      let next = null;
+      if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+      else if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+      else if (event.key === "Home") next = tabs[0];
+      else if (event.key === "End") next = tabs[tabs.length - 1];
+      if (!next) return;
+      event.preventDefault();
+      next.focus();
+      activate(next);
     });
   });
 }
@@ -1816,19 +1941,21 @@ document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initProjects();
   const refresh = document.getElementById("refresh-dashboard");
-  if (refresh) refresh.addEventListener("click", () => loadDashboard(true));
+  if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "Refreshing…", () => loadDashboard(true)));
   const analyticsRefresh = document.getElementById("analytics-refresh");
-  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => loadAnalytics(true));
+  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => withBusy(analyticsRefresh, "Refreshing…", () => loadAnalytics(true)));
   const qualityRefresh = document.getElementById("quality-refresh");
-  if (qualityRefresh) qualityRefresh.addEventListener("click", () => loadQuality(true));
+  if (qualityRefresh) qualityRefresh.addEventListener("click", () => withBusy(qualityRefresh, "Refreshing…", () => loadQuality(true)));
+  const pipelineInput = document.getElementById("pipeline-source");
+  if (pipelineInput) pipelineInput.addEventListener("input", () => validateJsonInput(pipelineInput, "pipeline-error", "Pipeline source JSON"));
   const pipelineRun = document.getElementById("pipeline-run");
-  if (pipelineRun) pipelineRun.addEventListener("click", runPipeline);
+  if (pipelineRun) pipelineRun.addEventListener("click", () => withBusy(pipelineRun, "Simulating…", runPipeline));
 
   // Pagination & Export
   const pagGo = document.getElementById("pag-go");
-  if (pagGo) pagGo.addEventListener("click", pagFromSize);
+  if (pagGo) pagGo.addEventListener("click", () => withBusy(pagGo, "Loading…", pagFromSize));
   const pagNext = document.getElementById("pag-next");
-  if (pagNext) pagNext.addEventListener("click", pagSearchAfter);
+  if (pagNext) pagNext.addEventListener("click", () => withBusy(pagNext, "Loading…", pagSearchAfter));
   const pagCursorReset = document.getElementById("pag-cursor-reset");
   if (pagCursorReset) {
     pagCursorReset.addEventListener("click", () => {
@@ -1839,39 +1966,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   const paginationRefresh = document.getElementById("pagination-refresh");
   if (paginationRefresh) {
-    paginationRefresh.addEventListener("click", () => {
+    paginationRefresh.addEventListener("click", () => withBusy(paginationRefresh, "Refreshing…", () => {
       paginationLoaded = false;
       ensurePagination();
-    });
+    }));
   }
   const pitOpenBtn = document.getElementById("pit-open");
-  if (pitOpenBtn) pitOpenBtn.addEventListener("click", pitOpen);
+  if (pitOpenBtn) pitOpenBtn.addEventListener("click", () => withBusy(pitOpenBtn, "Opening…", pitOpen));
   const pitNextBtn = document.getElementById("pit-next");
-  if (pitNextBtn) pitNextBtn.addEventListener("click", pitNext);
+  if (pitNextBtn) pitNextBtn.addEventListener("click", () => withBusy(pitNextBtn, "Loading…", pitNext));
   const pitCloseBtn = document.getElementById("pit-close");
-  if (pitCloseBtn) pitCloseBtn.addEventListener("click", pitClose);
+  if (pitCloseBtn) pitCloseBtn.addEventListener("click", () => withBusy(pitCloseBtn, "Closing…", pitClose));
   const exportLimit = document.getElementById("export-limit");
   if (exportLimit) exportLimit.addEventListener("input", updateExportLink);
 
   // Mapping & Analyze
   const mappingRefresh = document.getElementById("mapping-refresh");
-  if (mappingRefresh) mappingRefresh.addEventListener("click", () => loadMapping(true));
+  if (mappingRefresh) mappingRefresh.addEventListener("click", () => withBusy(mappingRefresh, "Refreshing…", () => loadMapping(true)));
   const analyzeRun = document.getElementById("analyze-run");
-  if (analyzeRun) analyzeRun.addEventListener("click", runAnalyze);
+  if (analyzeRun) analyzeRun.addEventListener("click", () => withBusy(analyzeRun, "Analyzing…", runAnalyze));
 
   // Ops
   const opsRefresh = document.getElementById("ops-refresh");
-  if (opsRefresh) opsRefresh.addEventListener("click", () => loadOps(true));
+  if (opsRefresh) opsRefresh.addEventListener("click", () => withBusy(opsRefresh, "Refreshing…", () => loadOps(true)));
 
   // Console
   const consoleRun = document.getElementById("console-run");
-  if (consoleRun) consoleRun.addEventListener("click", runConsole);
+  if (consoleRun) consoleRun.addEventListener("click", () => withBusy(consoleRun, "Running…", runConsole));
   const consoleInput = document.getElementById("console-input");
   if (consoleInput) {
+    consoleInput.addEventListener("input", () => validateJsonInput(consoleInput, "console-error", "Query body JSON"));
     consoleInput.addEventListener("keydown", (e) => {
-      if (e.ctrlKey && e.key === "Enter") {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        runConsole();
+        withBusy(consoleRun, "Running…", runConsole);
       }
     });
   }

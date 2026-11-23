@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
   <title>Gujrat RERA Explorer</title>
-  <link rel="stylesheet" href="/static/styles.css?v=3" />
+  <link rel="stylesheet" href="/static/styles.css?v=4" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -26,15 +26,15 @@
     </header>
 
     <nav class="tabs" id="tabs" aria-label="Sections" role="tablist">
-      <button class="tab is-active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard">Dashboard</button>
-      <button class="tab" id="tab-projects" role="tab" aria-selected="false" aria-controls="panel-projects" data-tab="projects">Projects</button>
-      <button class="tab" id="tab-detail" role="tab" aria-selected="false" aria-controls="panel-detail" data-tab="detail">Project Detail</button>
-      <button class="tab" id="tab-analytics" role="tab" aria-selected="false" aria-controls="panel-analytics" data-tab="analytics">Analytics</button>
-      <button class="tab" id="tab-quality" role="tab" aria-selected="false" aria-controls="panel-quality" data-tab="quality">Data Quality</button>
-      <button class="tab" id="tab-pagination" role="tab" aria-selected="false" aria-controls="panel-pagination" data-tab="pagination">Pagination &amp; Export</button>
-      <button class="tab" id="tab-mapping" role="tab" aria-selected="false" aria-controls="panel-mapping" data-tab="mapping">Mapping &amp; Indices</button>
-      <button class="tab" id="tab-ops" role="tab" aria-selected="false" aria-controls="panel-ops" data-tab="ops">Ops</button>
-      <button class="tab" id="tab-console" role="tab" aria-selected="false" aria-controls="panel-console" data-tab="console">Console</button>
+      <button class="tab is-active" id="tab-dashboard" role="tab" aria-selected="true" aria-controls="panel-dashboard" data-tab="dashboard" tabindex="0">Dashboard</button>
+      <button class="tab" id="tab-projects" role="tab" aria-selected="false" aria-controls="panel-projects" data-tab="projects" tabindex="-1">Projects</button>
+      <button class="tab" id="tab-detail" role="tab" aria-selected="false" aria-controls="panel-detail" data-tab="detail" tabindex="-1">Project Detail</button>
+      <button class="tab" id="tab-analytics" role="tab" aria-selected="false" aria-controls="panel-analytics" data-tab="analytics" tabindex="-1">Analytics</button>
+      <button class="tab" id="tab-quality" role="tab" aria-selected="false" aria-controls="panel-quality" data-tab="quality" tabindex="-1">Data Quality</button>
+      <button class="tab" id="tab-pagination" role="tab" aria-selected="false" aria-controls="panel-pagination" data-tab="pagination" tabindex="-1">Pagination &amp; Export</button>
+      <button class="tab" id="tab-mapping" role="tab" aria-selected="false" aria-controls="panel-mapping" data-tab="mapping" tabindex="-1">Mapping &amp; Indices</button>
+      <button class="tab" id="tab-ops" role="tab" aria-selected="false" aria-controls="panel-ops" data-tab="ops" tabindex="-1">Ops</button>
+      <button class="tab" id="tab-console" role="tab" aria-selected="false" aria-controls="panel-console" data-tab="console" tabindex="-1">Console</button>
     </nav>
   </div>
 
@@ -45,7 +45,7 @@
           <h2>Dashboard</h2>
           <p>Live cluster and index facts, verified at runtime — never hard-coded.</p>
         </div>
-        <button class="btn btn-ghost" id="refresh-dashboard">Refresh</button>
+        <button class="btn" type="button" id="refresh-dashboard">Refresh</button>
       </div>
       <div id="dashboard-body" class="stack">
         <div class="loading">Loading cluster facts…</div>
@@ -59,7 +59,7 @@
           <p>Full-text search with filters, safe highlighting and live facet counts.</p>
         </div>
         <div class="head-actions">
-          <button class="btn btn-ghost" type="button" id="projects-reset">Reset</button>
+          <button class="btn" type="button" id="projects-reset">Reset</button>
           <button class="btn btn-primary" type="button" id="projects-search">Search</button>
         </div>
       </div>
@@ -73,8 +73,8 @@
             <div class="field field-wide">
               <label for="q">Search project / promoter</label>
               <div class="suggest-wrap">
-                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" />
-                <div class="suggest-box" id="suggest-box" hidden></div>
+                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
+                <div class="suggest-box" id="suggest-box" role="listbox" hidden></div>
               </div>
             </div>
             <div class="field"><label for="f-district">District</label><select id="f-district"></select></div>
@@ -130,7 +130,10 @@
         </div>
         <div class="head-actions">
           <div class="inline-input">
-            <input id="detail-id" type="text" placeholder="projectId e.g. 573" aria-label="Project ID" />
+            <div class="field compact-field">
+              <label for="detail-id">Project ID</label>
+              <input id="detail-id" type="text" placeholder="projectId e.g. 573" />
+            </div>
             <button class="btn btn-primary" type="button" id="detail-load">Load</button>
           </div>
           <button class="btn btn-ghost" type="button" id="detail-back">Back to Projects</button>
@@ -147,7 +150,7 @@
           <h2>Analytics</h2>
           <p>Terms aggregations and yearly registration histograms computed by Elasticsearch.</p>
         </div>
-        <button class="btn btn-ghost" type="button" id="analytics-refresh">Refresh</button>
+        <button class="btn" type="button" id="analytics-refresh">Refresh</button>
       </div>
       <div id="analytics-body" class="stack">
         <div class="placeholder">Open this tab to load analytics.</div>
@@ -160,7 +163,7 @@
           <h2>Data Quality</h2>
           <p>Missing fields, scrape coverage, casing collisions and a dry-run pipeline simulation.</p>
         </div>
-        <button class="btn btn-ghost" type="button" id="quality-refresh">Refresh</button>
+        <button class="btn" type="button" id="quality-refresh">Refresh</button>
       </div>
       <div class="stack">
         <div id="quality-summary"></div>
@@ -184,11 +187,13 @@
             Dry-run only (<code>_simulate</code>). Nothing is indexed or modified. Default pipeline
             <code>gujrat_normalize_pipeline</code>; a missing pipeline reports <code>pipeline_missing</code>.
           </p>
-          <textarea id="pipeline-source" class="code-input" rows="6" spellcheck="false">{
+          <label for="pipeline-source">Pipeline source JSON</label>
+          <textarea id="pipeline-source" class="code-input" rows="6" spellcheck="false" aria-describedby="pipeline-error">{
   "project_name": "  LOTUS RESIDENCY ",
   "district": " ahmedabad ",
   "price": "1.67 Crore Onwards"
 }</textarea>
+          <div id="pipeline-error" class="field-error" role="alert"></div>
           <div class="head-actions">
             <button class="btn btn-primary" type="button" id="pipeline-run">Simulate</button>
           </div>
@@ -204,16 +209,22 @@
           <p>Compare <code>from/size</code>, <code>search_after</code>, and Point-in-Time paging. Stream CSV exports.</p>
         </div>
         <div class="head-actions">
-          <button class="btn btn-ghost" type="button" id="pagination-refresh">Refresh</button>
+          <button class="btn" type="button" id="pagination-refresh">Refresh</button>
         </div>
       </div>
       <div class="stack">
         <div class="grid-2">
           <div class="card">
             <div class="card-head"><h3>Page N (from / size)</h3></div>
-            <div class="head-actions mb-12 gap-8 flex-wrap">
-              <label>Page <input id="pag-page" type="number" value="1" min="1" class="w-70" /></label>
-              <label>Size <select id="pag-size"><option>20</option><option>50</option><option>100</option></select></label>
+            <div class="head-actions mb-12 gap-8 flex-wrap items-center">
+              <div class="field compact-field">
+                <label for="pag-page">Page</label>
+                <input id="pag-page" type="number" value="1" min="1" class="w-70" />
+              </div>
+              <div class="field compact-field">
+                <label for="pag-size">Size</label>
+                <select id="pag-size"><option>20</option><option>50</option><option>100</option></select>
+              </div>
               <button class="btn btn-primary" id="pag-go" type="button">Go</button>
             </div>
             <div id="pag-from-results" aria-live="polite"></div>
@@ -222,7 +233,7 @@
           <div class="card">
             <div class="card-head"><h3>Cursor (search_after)</h3></div>
             <div class="head-actions mb-12 gap-8">
-              <button class="btn btn-primary" id="pag-next" type="button">Next 100</button>
+              <button class="btn" id="pag-next" type="button">Next 100</button>
               <button class="btn btn-ghost" id="pag-cursor-reset" type="button">Reset cursor</button>
             </div>
             <div id="pag-cursor-info" class="muted small mb-10"></div>
@@ -231,12 +242,15 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Point-in-Time (PIT) Session</h3></div>
+          <div class="card-head">
+            <h3>Point-in-Time (PIT) Session</h3>
+            <span class="tag tag-muted" id="pit-status" aria-live="polite">closed</span>
+          </div>
           <p class="muted small mb-10">Opens a stateful point-in-time context with server-side TTL tracking.</p>
           <div class="head-actions mb-12 gap-8">
-            <button class="btn btn-primary" id="pit-open" type="button">Open PIT</button>
+            <button class="btn" id="pit-open" type="button">Open PIT</button>
             <button class="btn btn-ghost" id="pit-next" type="button">Next (PIT)</button>
-            <button class="btn btn-ghost" id="pit-close" type="button">Close PIT</button>
+            <button class="btn" id="pit-close" type="button">Close PIT</button>
           </div>
           <div id="pit-info" class="muted small mb-10"></div>
           <div id="pit-results" aria-live="polite"></div>
@@ -245,8 +259,11 @@
           <div class="card-head"><h3>CSV Export</h3></div>
           <p class="muted small">Streams all projects as CSV using a dedicated PIT + search_after. Memory bounded, formula-safe cells.</p>
           <div class="head-actions mt-12 gap-8 items-center">
-            <label>Limit <input id="export-limit" type="number" value="17271" min="1" max="100000" class="w-110" /></label>
-            <a class="btn btn-primary" id="export-link" href="/api/projects/export?limit=17271" target="_blank" download="gujrat_rera_projects.csv">Export CSV</a>
+            <div class="field compact-field">
+              <label for="export-limit">Limit</label>
+              <input id="export-limit" type="number" value="17271" min="1" max="100000" class="w-110" />
+            </div>
+            <a class="btn" id="export-link" href="/api/projects/export?limit=17271" target="_blank" download="gujrat_rera_projects.csv">Export CSV</a>
           </div>
         </div>
       </div>
@@ -258,7 +275,7 @@
           <h2>Mapping &amp; Indices</h2>
           <p>Live mapping with indexed / not-indexed markers, stats, aliases, and analyzer tool.</p>
         </div>
-        <button class="btn btn-ghost" type="button" id="mapping-refresh">Refresh</button>
+        <button class="btn" type="button" id="mapping-refresh">Refresh</button>
       </div>
       <div class="stack">
         <div id="mapping-stats"></div>
@@ -270,14 +287,20 @@
         <div class="card">
           <div class="card-head"><h3>Analyzer Tool (POST /_analyze)</h3></div>
           <p class="muted small mb-10">Test Elasticsearch tokenization against text fields or built-in analyzers.</p>
-          <div class="head-actions mb-12 gap-8 flex-wrap">
-            <input id="analyze-text" type="text" value="Shivalik Residences Ahmedabad" placeholder="Text to analyze" aria-label="Text to analyze" class="flex-1 min-w-200" />
-            <select id="analyze-field" aria-label="Field to analyze" class="w-160">
-              <option value="">Standard analyzer</option>
-              <option value="project_name">project_name (text)</option>
-              <option value="project_name.keyword">project_name.keyword</option>
-              <option value="promoter_name">promoter_name (text)</option>
-            </select>
+          <div class="head-actions mb-12 gap-8 flex-wrap items-center">
+            <div class="field compact-field flex-1 min-w-200">
+              <label for="analyze-text">Text to analyze</label>
+              <input id="analyze-text" type="text" value="Shivalik Residences Ahmedabad" placeholder="Text to analyze" />
+            </div>
+            <div class="field compact-field">
+              <label for="analyze-field">Field</label>
+              <select id="analyze-field" class="w-160">
+                <option value="">Standard analyzer</option>
+                <option value="project_name">project_name (text)</option>
+                <option value="project_name.keyword">project_name.keyword</option>
+                <option value="promoter_name">promoter_name (text)</option>
+              </select>
+            </div>
             <button class="btn btn-primary" id="analyze-run" type="button">Analyze</button>
           </div>
           <div id="analyze-output" aria-live="polite"></div>
@@ -292,7 +315,7 @@
           <h2>Ops</h2>
           <p>Cluster health, node metrics, shard allocation, and the P13 administrative runbook.</p>
         </div>
-        <button class="btn btn-ghost" type="button" id="ops-refresh">Refresh</button>
+        <button class="btn" type="button" id="ops-refresh">Refresh</button>
       </div>
       <div class="stack">
         <div id="ops-health"></div>
@@ -320,16 +343,26 @@
         </div>
       </div>
       <div class="stack">
+        <div class="card note">
+          <div class="card-head"><h3>Read-only guardrails</h3></div>
+          <p>
+            Only the configured index is queryable. Scripts, regexp queries, leading wildcards, runtime fields,
+            write calls, and admin operations are rejected by the backend before Elasticsearch receives the request.
+          </p>
+        </div>
         <div class="card">
           <div class="card-head">
             <h3>Query DSL</h3>
             <span class="tag tag-muted">index: gujrat_rera_data</span>
           </div>
-          <textarea id="console-input" class="code-input" rows="12" spellcheck="false">{
+          <label for="console-input">Query body JSON</label>
+          <textarea id="console-input" class="code-input" rows="12" spellcheck="false" aria-describedby="console-error">{
   "query": { "match": { "project_name": "residency" } },
   "size": 5,
   "_source": ["projectId", "project_name", "district", "project_status"]
 }</textarea>
+          <div id="console-error" class="field-error" role="alert"></div>
+          <p class="muted small">Press Ctrl + Enter (Cmd + Enter on macOS) to run.</p>
           <div class="head-actions mt-10">
             <button class="btn btn-primary" id="console-run" type="button">Run Query</button>
           </div>
@@ -346,6 +379,6 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>

@@ -1,622 +1,412 @@
-# Frontend UI/UX Guide
+# Frontend UI/UX Guide — Gujrat RERA Explorer
 
-## Purpose
+## 1. Purpose & Design Direction
 
-This file is the visual source of truth for the Gujrat RERA Explorer frontend. It defines the UI elements, colour system, component behaviour, and frontend changes needed to keep the application bright, readable, and consistent.
+This document is the visual and interaction source of truth for the **Gujrat RERA Explorer** frontend. It defines the design tokens, layout architecture, component specifications, accessibility standards, and verification checklist required to keep the application bright, scannable, and consistent.
 
-Design direction: **Bright Clinical Data Explorer** — a single light mode using white surfaces, pale blue backgrounds, strong sky-blue accents, dense tables, and clearly separated status colours.
+**Design Direction: Bright Clinical Data Explorer** — a single-mode light interface built with crisp white surfaces, pale sky-blue backgrounds, high-contrast sky-blue accents, dense inspectable tables, and strictly separated semantic status colours.
 
-## Design Rules
+### Core Design Principles
 
-- Use **one light mode only**. Do not add a dark theme or theme toggle.
-- Keep the interface data-dense because this is an Elasticsearch teaching/debugging tool.
-- Use white cards and pale blue page backgrounds to make data feel clean and inspectable.
-- Use blue for navigation, primary actions, links, and selected states.
-- Use semantic colours only for meaning: green = healthy/success, amber = warning, red = error, purple = disabled/non-indexed metadata.
-- Never rely on colour alone; pair status colours with text labels, dots, tags, or icons.
-- Prefer CSS variables over hard-coded colours.
-- Prefer DOM text nodes and safe rendering for all backend data.
-- Keep all controls keyboard accessible with visible focus.
+1. **Single Light Mode Only**: Do not add a dark theme or theme toggle. Clinical light surfaces maximize legibility for dense Elasticsearch payloads and tabular data.
+2. **Data-Dense, Inspectable UI**: Prioritize information density and scannability over decorative whitespace—this is an Elasticsearch teaching and debugging tool.
+3. **Blue for Navigation & Actions**: Reserve sky blue (`--accent` / `--accent-text` / `--accent-gradient`) exclusively for navigation, primary actions, interactive links, focus rings, and selected states.
+4. **Semantic Colour Discipline**: Use semantic colours strictly for meaning—green for healthy/success, amber for warnings/caveats, red for errors/failures, and purple for disabled or non-indexed metadata.
+5. **Never Rely on Colour Alone**: Always pair status colours with explicit text labels, dots, tags, or icons so colour-vision-deficient users can parse every state.
+6. **Tokens Over Hard-Coded Values**: Define and consume CSS custom properties in `:root`; avoid scattered hex values in component rules.
+7. **Safe DOM Rendering**: Render all backend-provided strings as DOM text nodes (`textContent`), never `innerHTML`. Build search highlights via safe DOM node creation.
+8. **Keyboard-First & Accessible**: Every interactive control must be reachable by keyboard, have a visible `:focus-visible` ring, and meet WCAG 2.1 AA contrast (`≥ 4.5:1` for normal text, `≥ 3:1` for large text and UI components).
 
-## Colour System
+---
 
-### Core Palette
+## 2. Design Tokens (`:root`)
 
-| Token | Value | Use |
+### 2.1 Core Surface & Text Palette
+
+| Token | Value | Contrast / Role |
 |---|---:|---|
-| `--bg` | `#f0f7ff` | Main page background |
-| `--bg-elev` | `#ffffff` | Primary card/panel surface |
-| `--bg-elev-2` | `#f8fafc` | Secondary surface, inactive table rows, tabs strip |
-| `--bg-elev-3` | `#e0f2fe` | Pale blue highlight surface |
+| `--bg` | `#f0f7ff` | Main page background (pale sky blue) |
+| `--bg-elev` | `#ffffff` | Primary card, table, and panel surface |
+| `--bg-elev-2` | `#f8fafc` | Secondary surface, alternating table rows, footer |
+| `--bg-elev-3` | `#e0f2fe` | Pale blue hover/highlight surface |
 | `--border` | `#cbd5e1` | Default borders, inputs, secondary buttons |
-| `--border-bright` | `#0284c7` | Strong blue border for active/hover states |
-| `--border-soft` | `#e2e8f0` | Subtle separators and card borders |
-| `--text` | `#0f172a` | Main text, headings, table values |
-| `--text-dim` | `#334155` | Secondary body text |
-| `--text-faint` | `#64748b` | Labels, metadata, placeholders |
-| `--accent` | `#0284c7` | Primary blue, links, selection, focus |
-| `--accent-soft` | `rgba(2, 132, 199, 0.1)` | Subtle blue fill |
+| `--border-bright` | `#0284c7` | Active/hover borders |
+| `--border-soft` | `#e2e8f0` | Subtle card borders and row dividers |
+| `--text` | `#0f172a` | Primary text, headings, table values (`17.8:1` on white) |
+| `--text-dim` | `#334155` | Secondary body text (`10.3:1` on white) |
+| `--text-faint` | `#64748b` | Labels and metadata on `#ffffff` (`4.76:1` on white) |
+| `--text-faint-tinted` | `#475569` | Metadata on `#f0f7ff` or `#e0f2fe` (`≥ 6.4:1` — use instead of `#64748b` on tinted surfaces) |
+| `--accent` | `#0284c7` | Primary blue for fills, borders, icons, focus rings, and large/bold text (`≥ 18px` or `≥ 14px` bold) |
+| `--accent-text` | `#0369a1` | Accessible blue for small text, links, labels, and badges on light surfaces (`5.9:1` on white) |
+| `--accent-soft` | `rgba(2, 132, 199, 0.1)` | Subtle blue tint fill |
 | `--accent-gradient` | `linear-gradient(135deg, #0284c7, #2563eb)` | Brand mark, active tab, primary buttons |
-| `--focus` | `#0284c7` | Keyboard focus ring |
-| `--chart-grid` | `rgba(148, 163, 184, 0.25)` | Chart grid lines |
+| `--focus` | `#0284c7` | Keyboard `:focus-visible` outline |
+| `--chart-grid` | `rgba(148, 163, 184, 0.25)` | Chart.js grid lines |
 
-### Semantic Colours
+### 2.2 Semantic Colours
 
 | Token | Value | Use |
 |---|---:|---|
-| `--green` | `#059669` | Healthy status, positive KPI |
+| `--green` | `#059669` | Healthy status, positive KPI, Chart series 2 |
 | `--green-bg` | `#ecfdf5` | Success surface |
-| `--yellow` | `#d97706` | Warning, malformed/caveat state |
-| `--yellow-bg` | `#fffbeb` | Warning surface |
-| `--red` | `#dc2626` | Error, failed state |
+| `--green-text` | `#065f46` | High-contrast text inside `--green-bg` |
+| `--yellow` | `#d97706` | Warning border/dot, Chart series 3 |
+| `--yellow-bg` | `#fffbeb` | Warning / caveat surface |
+| `--yellow-text` | `#92400e` | High-contrast warning text (`#78350f` or `#92400e`) inside `--yellow-bg` |
+| `--red` | `#dc2626` | Error border/dot, failed state |
 | `--red-bg` | `#fef2f2` | Error surface |
+| `--red-text` | `#991b1b` | High-contrast error text (`#991b1b` or `#b91c1c`) inside `--red-bg` |
 | `--purple` | `#7c3aed` | Non-indexed metadata, muted badge |
-| `--purple-bg` | `#f5f3ff` | Metadata surface |
+| `--purple-bg` | `#f5f3ff` | Non-indexed metadata surface |
 | `--cyan` | `#0891b2` | Chart series 4 |
 | `--orange` | `#ea580c` | Chart series 5 |
 | `--pink` | `#db2777` | Chart series 6 |
 | `--lime` | `#65a30d` | Chart series 7 |
 | `--indigo` | `#4f46e5` | Chart series 8 |
 
-### Supporting Colours
+### 2.3 Supporting Component Tokens
 
-| Use | Value |
-|---|---:|
-| Sticky header background | `#ffffff` |
-| Sticky header bottom border | `#bae6fd` |
-| Header separator | `#e0f2fe` |
-| Pill border | `#bae6fd` |
-| Pill background | `#f0f9ff` |
-| Pill text | `#0369a1` |
-| Table header background | `#f0f7ff` |
-| Table header border | `#bae6fd` |
-| Highlight background | `#fef08a` |
-| Highlight text | `#854d0e` |
-| Highlight border | `#facc15` |
-| Code editor background | `#0f172a` |
-| Code editor text | `#38bdf8` |
-| Code editor border | `#334155` |
+Convert previously hard-coded supporting hex values into `:root` tokens so every surface remains theme-consistent:
 
-### Contrast Guidance
+| Token | Value | Use |
+|---|---:|---|
+| `--header-bg` | `#ffffff` | Sticky header background |
+| `--header-border` | `#bae6fd` | Sticky header bottom border |
+| `--header-sep` | `#e0f2fe` | Header internal separator |
+| `--pill-bg` | `#f0f9ff` | Host/info pill background |
+| `--pill-border` | `#bae6fd` | Host/info pill border |
+| `--pill-text` | `#0369a1` | Host/info pill text |
+| `--table-head-bg` | `#f0f7ff` | Table `<th>` background |
+| `--table-head-border` | `#bae6fd` | Table `<th>` bottom border |
+| `--highlight-bg` | `#fef08a` | Search match `<mark>` background |
+| `--highlight-text` | `#854d0e` | Search match `<mark>` text |
+| `--highlight-border` | `#facc15` | Search match `<mark>` border |
+| `--code-bg` | `#0f172a` | `<pre>` and `.code-input` background |
+| `--code-text` | `#7dd3fc` | Read-only `<pre>` JSON/code text |
+| `--code-editor-text` | `#38bdf8` | Editable `.code-input` text |
+| `--code-border` | `#334155` | Code block / editor border |
 
-- Body text must stay dark: `#0f172a`, `#334155`, or `#64748b` on white/pale blue.
-- Do not use pale blue text on white for small text.
-- Use `#0369a1` for small blue labels on light surfaces; use `#0284c7` for larger labels, borders, and fills.
-- White text is allowed only on strong blue fills such as `#0284c7`, `#0369a1`, or the primary gradient.
-- Error text should use `#991b1b` or `#b91c1c` inside `#fef2f2`.
-- Warning text should use `#78350f` or `#b45309` inside `#fffbeb`.
+### 2.4 Spacing, Radius, Elevation & Z-Index Scales
 
-## Typography
+| Category | Token | Value | Use |
+|---|---|---|---|
+| **Spacing** | `--space-1` / `--space-2` | `4px` / `8px` | Tight gaps, badge padding, inline icon-to-text spacing |
+| | `--space-3` / `--space-4` | `12px` / `16px` | Form field gaps, compact table cell padding |
+| | `--space-5` / `--space-6` | `20px` / `24px` | Standard card padding (`20px 22px`), grid gutters |
+| **Radius** | `--radius-sm` | `6px` | Tags, badges, inline highlights, small controls |
+| | `--radius-md` | `8px` | Inputs, selects, buttons, code blocks |
+| | `--radius-lg` | `12px` | Cards, `.table-wrap`, `.facets`, `.suggest-box` |
+| | `--radius-pill` | `9999px` | Status pills, `.tag` badges |
+| **Shadow** | `--shadow-sm` | `0 1px 2px rgba(15, 23, 42, 0.05)` | Cards, table wrappers |
+| | `--shadow-md` | `0 4px 12px rgba(2, 132, 199, 0.12)` | Sticky header, active tabs |
+| | `--shadow-lg` | `0 10px 24px rgba(15, 23, 42, 0.12)` | `.suggest-box` dropdown |
+| **Z-Index** | `--z-sticky` | `10` | Sticky `.facets` sidebar |
+| | `--z-header` | `30` | Sticky `.site-header-wrap` |
+| | `--z-dropdown` | `40` | `.suggest-box` autocomplete menu |
 
-| Element | Font / Style |
-|---|---|
-| Base font | `Inter`, system UI fallback |
-| Base size | `14px`, line height `1.5` |
-| Page title | `20px`, weight `800` |
-| Panel title | `24px`, weight `800` |
-| Card title | `16px`, weight `800` |
-| KPI value | `28px`, weight `850`, tight letter spacing |
-| Labels | `11.5px`, uppercase, letter spacing `0.07em`–`0.1em`, weight `750` |
-| Metadata | `12px`–`13px`, `--text-faint` |
-| Mono text | `ui-monospace`, `SFMono-Regular`, `Cascadia Code`, `Consolas` |
+### 2.5 Contrast & Accessibility Guardrails
 
-Rules:
+- **Small blue text**: Always use `--accent-text` (`#0369a1`) for small blue labels, table headers, facet headers, and inline links. Do not use `#0284c7` for small text on white (`4.09:1` fails WCAG AA); reserve `#0284c7` for borders, fills, focus rings, and bold/large headings.
+- **Tinted-surface metadata**: On `--bg` (`#f0f7ff`) or `--bg-elev-3` (`#e0f2fe`), use `--text-faint-tinted` (`#475569`) instead of `--text-faint` (`#64748b`) to stay above `4.5:1`.
+- **Placeholders**: Use `#64748b` (not `#94a3b8`, which fails contrast at `2.56:1`) for input placeholders so hints remain readable.
+- **White text**: Permitted only on strong dark/blue fills (`#0284c7`, `#0369a1`, `--accent-gradient`, `#0f172a`).
+- **Chart series 2**: Use `--green` (`#059669`) rather than `#4ade80` so green bars/lines remain crisp against white chart canvases.
 
-- Keep headings short and scannable.
-- Use uppercase only for labels, table headers, and compact metadata.
-- Use monospace for field names, index names, IDs, JSON, query text, and code.
-- Do not italicise data values; use badges or colour blocks instead.
+---
 
-## Global Layout
+## 3. Typography
 
-### Shell
+| Element | Font / Size / Weight | Notes |
+|---|---|---|
+| Base font | `Inter`, system UI fallback (`-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`) | `14px`, `line-height: 1.5` |
+| Page title | `20px`, weight `800` | Header product title |
+| Panel title | `24px`, weight `800` | Tab section heading |
+| Card title | `16px`, weight `800` | `.card-head` heading |
+| KPI value | `28px`, weight `850`, `-0.02em` tracking | Enable `font-variant-numeric: tabular-nums` |
+| Labels & headers | `11.5px`, uppercase, `0.07em`–`0.1em` tracking, weight `750` | Use `--accent-text` or `--text-faint` |
+| Metadata | `12px`–`13px`, `--text-faint` / `--text-faint-tinted` | Timestamps, counts, subtitles |
+| Monospace | `ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace` | Field names, index names, IDs, JSON, DSL, timings |
 
-- Body: full viewport, pale blue gradient background, no margin, flex column.
-- Header: sticky at top using `.site-header-wrap`.
-- Header surface: white with `#bae6fd` bottom border and subtle blue shadow.
-- Main: `max-width: 1400px`, centred, `26px 28px 48px` padding.
-- Footer: pale grey-blue `#f8fafc`, top border, small muted text.
+### Typography Rules
 
-### Header
+- Keep headings short and scannable; avoid multi-line card titles.
+- Use uppercase **only** for compact labels, table `<th>` headers, tags, and metadata.
+- Apply `font-variant-numeric: tabular-nums` to all KPIs, numeric table columns, shard counts, and query `took` timings so digits align vertically.
+- Never italicize data values; use `.tag` badges or colour-coded blocks instead.
+- Handle long strings gracefully: truncate long project/promoter names in dense tables with `text-overflow: ellipsis` + `title` attribute, and apply `overflow-wrap: anywhere` on long IDs, hashes, and URLs in detail views.
+
+---
+
+## 4. Global Layout & Shell
+
+### 4.1 Page Shell
+
+- **Body**: Full viewport (`min-height: 100vh`), `margin: 0`, flex column, subtle pale blue gradient background (`--bg`).
+- **Header (`.site-header-wrap`)**: Sticky (`top: 0`, `z-index: var(--z-header)`), white surface (`--header-bg`), `#bae6fd` bottom border, subtle blue shadow.
+- **Main**: `max-width: 1400px`, centred, `padding: 26px 28px 48px`, `flex: 1`.
+- **Footer**: `--bg-elev-2` (`#f8fafc`), `1px solid var(--border-soft)` top border, small muted text.
+
+### 4.2 Header & Status Pill
 
 Elements:
 
-- `.brand-mark`: blue gradient square with `GR`.
-- `.brand-text h1`: product title.
-- `.brand-sub`: one-line product description.
-- `.pill-host`: Elasticsearch host chip.
-- `#cluster-pill`: status pill with coloured dot and label.
+- `.brand-mark`: Blue gradient square (`--accent-gradient`) with bold white `GR` monogram.
+- `.brand-text h1`: Product title (`Gujrat RERA Explorer`).
+- `.brand-sub`: One-line product description.
+- `.pill-host`: Elasticsearch host chip (`--pill-bg`, `--pill-border`, `--pill-text`).
+- `#cluster-pill`: Live cluster health pill (`aria-live="polite"`) pairing a coloured dot with an explicit text label.
 
-Status pill rules:
-
-| State | Text | Colour |
+| State | Label Text | Visual Style |
 |---|---|---|
-| Green | `healthy` / `online` | `--green` on `--green-bg` |
-| Yellow | `yellow` | `--yellow` on `--yellow-bg` |
-| Red | `red` / `offline` | `--red` on `--red-bg` |
-| Unknown | `checking…` / `unknown` | `--text-dim` on white |
+| Green | `healthy` / `online` | `--green` dot + `--green-text` on `--green-bg` |
+| Yellow | `yellow` | `--yellow` dot + `--yellow-text` on `--yellow-bg` |
+| Red | `red` / `offline` | `--red` dot + `--red-text` on `--red-bg` |
+| Unknown | `checking…` / `unknown` | `--text-dim` dot + text on `--bg-elev` |
 
-### Tabs
+### 4.3 Primary Navigation Tabs
 
-Use the nine existing tabs:
+Nine tabs inside `<nav class="tabs" aria-label="Sections">` with `role="tablist"`:
 
-1. Dashboard
-2. Projects
-3. Project Detail
-4. Analytics
-5. Data Quality
-6. Pagination & Export
-7. Mapping & Indices
-8. Ops
-9. Console
+1. `Dashboard`
+2. `Projects`
+3. `Project Detail`
+4. `Analytics`
+5. `Data Quality`
+6. `Pagination & Export`
+7. `Mapping & Indices`
+8. `Ops`
+9. `Console`
 
-Rules:
+Tab states & keyboard behaviour:
 
-- Tabs are buttons inside `<nav class="tabs" aria-label="Sections">`.
-- Default tab: white fill, `#cbd5e1` border, `#334155` text.
-- Hover: `#e0f2fe` fill, `#0284c7` border/text, slight lift.
-- Active: white text on `--accent-gradient`, `#0284c7` border, stronger shadow.
-- Tabs may wrap and scroll horizontally on narrow screens.
-- For future accessibility updates, add `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls`.
+- **Default**: `--bg-elev` fill, `--border` border, `--text-dim` text.
+- **Hover**: `--bg-elev-3` fill, `--border-bright` border, `--accent-text` text, slight vertical lift (`translateY(-1px)`).
+- **Active (`aria-selected="true"`)**: White text on `--accent-gradient`, `--border-bright` border, `--shadow-md`.
+- **Accessibility**: Implement `role="tab"`, `aria-selected`, `aria-controls="<panel-id>"`, and roving `tabindex` (`0` on active tab, `-1` on others) with `ArrowLeft` / `ArrowRight` / `Home` / `End` navigation.
+- **Overflow**: Wrap cleanly on desktop; allow horizontal scroll with `-webkit-overflow-scrolling: touch` on narrow screens.
 
-## Component Library
+---
 
-### Buttons
+## 5. Component Library
+
+### 5.1 Buttons
 
 | Class | Appearance | Use |
 |---|---|---|
-| `.btn` | White fill, grey border | Secondary actions: Reset, Back, Refresh |
-| `.btn-primary` | Blue gradient, white text | Main action: Search, Run, Load, Go, Analyze |
-| `.btn-ghost` | Pale blue fill, blue text/border | Light supporting action |
-| `.btn:disabled` | Low opacity, no pointer | Unavailable action |
+| `.btn` | White fill, `--border` border, `--text` | Secondary actions: `Reset`, `Back to Projects`, `Refresh`, `Close PIT` |
+| `.btn-primary` | `--accent-gradient` fill, white text | Primary action (max 1 per panel): `Search`, `Load`, `Run Query`, `Simulate`, `Analyze`, `Go` |
+| `.btn-ghost` | `--bg-elev-3` fill, `--accent-text` text, `--pill-border` | Supporting actions: `Copy JSON`, `Reset cursor` |
+| `.btn:disabled` | `opacity: 0.55`, `cursor: not-allowed` | Unavailable or in-flight actions |
 
-Rules:
+Interaction rules:
 
-- One primary action per panel where possible.
-- Keep labels short: `Search`, `Refresh`, `Load`, `Run Query`, `Simulate`.
-- Do not add destructive buttons; this app is read-only.
+- During async requests, set `disabled` and `aria-busy="true"` on the triggering button (and update label, e.g., `Searching…`) to prevent duplicate submissions.
+- Keep button labels concise (1–3 words) and free of emoji.
+- Do not add destructive/write buttons; the explorer is strictly read-only.
 
-### Cards
+### 5.2 Cards & Grids
 
 | Class | Use |
 |---|---|
-| `.card` | Standard content container |
-| `.card-head` | Card title row with optional tag/metadata |
-| `.card.note` | Caveats and teaching notes |
-| `.card.empty` | Empty explanatory state |
+| `.card` | Standard white container (`--bg-elev`, `1px solid var(--border-soft)`, `--radius-lg`, `padding: 20px 22px`, `--shadow-sm`) |
+| `.card-head` | Flex header row with card title and optional `.tag` or metadata |
+| `.card.note` | Caveats and teaching notes (`--yellow` border, `--yellow-bg` fill, `--yellow-text`) |
+| `.card.empty` | Explanatory empty state |
 
-Rules:
+Use `.grid-2` for two-column card layouts (`gap: 20px`), collapsing to one column below `900px`.
 
-- White surface, soft border, `12px` radius, subtle shadow.
-- Card padding: `20px 22px`.
-- Notes use amber border/background and darker amber text.
-- Use `.grid-2` for two-column card groups; collapse to one column under `900px`.
+### 5.3 KPI Cards
 
-### KPI Cards
+Use `.kpi-grid` (`grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))`) and `.kpi`:
 
-Use `.kpi-grid` and `.kpi`.
+- **Label**: `11.5px` uppercase (`--text-faint`).
+- **Value**: `28px` bold (`850`), `tabular-nums`, default `--text` (reserve `.is-green`, `.is-yellow`, `.is-red`, `.is-warn` strictly for semantic health/error metrics).
+- **Subtitle**: `12px`–`13px` muted explanation.
 
-Structure:
-
-- Label: small uppercase.
-- Value: large bold number or short text.
-- Subtitle: small muted explanation.
-- Optional semantic class: `.is-green`, `.is-yellow`, `.is-red`, `.is-warn`.
-
-Rules:
-
-- Use for cluster facts, analytics totals, quality totals, mapping stats.
-- Keep values short; long values belong in cards or tables.
-- Do not overuse coloured KPI values; default dark text is preferred.
-
-### Tags and Badges
+### 5.4 Tags & Badges
 
 | Class | Meaning |
 |---|---|
-| `.tag` | Neutral badge |
-| `.tag-green` | Healthy / complete |
-| `.tag-yellow` | Warning / caveat |
-| `.tag-red` | Error / failed |
-| `.tag-muted` | Metadata / index name / read-only marker |
+| `.tag` | Neutral metadata pill |
+| `.tag-green` | Healthy / complete / supported |
+| `.tag-yellow` | Warning / caveat / yellow cluster |
+| `.tag-red` | Error / failed / unsupported |
+| `.tag-muted` | Non-indexed metadata / index name / read-only marker (`--purple-bg`, `--purple`) |
 | `.tag-warn` | Warning count |
 
-Rules:
+Always pair status tags with explicit text (`yellow`, `5 group(s)`, `index: gujrat_rera_data`) and a leading dot when representing health.
 
-- Uppercase, small, pill-shaped.
-- Pair with text such as `yellow`, `5 group(s)`, `index: gujrat_rera_data`.
-- For health status, combine tag with a dot or explicit label.
+### 5.5 Forms, Inputs & Suggest Dropdown
 
-### Inputs, Selects, and Fields
+- **Controls**: White background, `1px solid var(--border)`, `--radius-md` (`8px`), `min-height: 38px` (`44px` on touch viewports).
+- **Focus**: `--border-bright` (`#0284c7`) + `0 0 0 3px rgba(2, 132, 199, 0.2)`.
+- **Labels**: Every input must have a `<label for="…">` styled in small uppercase `--accent-text`.
+- **Layout helpers**: `.field` (vertical label/control), `.field-wide` (full-width search), `.inline-input` (compact input + button).
+- **Validation**: Show inline error text (`--red-text`) directly beneath invalid inputs (e.g., invalid date range, non-JSON in Console) with `aria-invalid="true"`.
 
-Use for search text, filters, dates, numbers, project ID, pagination limits, analyzer text, and console JSON.
+**Suggest Dropdown (`.suggest-wrap` / `.suggest-box`)**:
 
-Rules:
+- Position `.suggest-box` absolutely below the input (`z-index: var(--z-dropdown)`, `--bg-elev`, `1px solid var(--border-bright)`, `--radius-lg`, `--shadow-lg`).
+- `.suggest-item`: Flex row with `.suggest-name` (`--accent-text`, bold) and `.suggest-meta` (`--text-faint`, `12px`). Hover/active item uses `--pill-bg` (`#f0f9ff`).
+- Wire `role="combobox"`, `aria-expanded`, `aria-controls`, `aria-activedescendant`, and support `ArrowDown`, `ArrowUp`, `Enter`, and `Escape` to close.
 
-- White background, `#cbd5e1` border, `8px` radius.
-- Placeholder text: `#94a3b8`.
-- Focus: `#0284c7` border plus `0 0 0 3px rgba(2, 132, 199, 0.2)`.
-- Labels are small blue uppercase text.
-- Use `.field` for vertical label/control pairs.
-- Use `.field-wide` for full-width search input.
-- Use `.inline-input` for compact input+button groups.
+### 5.6 Facets Sidebar (Projects Tab)
 
-### Suggest Dropdown
+- Sticky (`top: 120px`, `z-index: var(--z-sticky)`), internal scroll (`max-height: calc(100vh - 140px)`), `--bg-elev`, `1px solid var(--border-soft)`, `--radius-lg`.
+- Section headers in uppercase `--accent-text`.
+- `.facet-item`: Full-width button with flex space-between; hover fills `--bg-elev-3`, border `--border-bright`, subtle `translateX(2px)` shift; active/selected facet uses `--accent-soft` fill and `--border-bright` border.
+- `.facet-count`: Pill badge with `--pill-bg` and `--pill-text` (`tabular-nums`).
+- Collapses to static full-width block below `900px`.
 
-Structure:
+### 5.7 Tables
 
-- `.suggest-wrap` around the input.
-- `.suggest-box` absolutely positioned below the input.
-- `.suggest-item` rows with `.suggest-name` and `.suggest-meta`.
+Wrap every table in `.table-wrap` (`overflow-x: auto`, `--bg-elev`, `1px solid var(--border-soft)`, `--radius-lg`, `--shadow-sm`).
 
-Rules:
+- **Headers (`<th>`)**: `--table-head-bg` (`#f0f7ff`), `--accent-text` (`#0369a1`), `1px solid var(--table-head-border)` bottom border, uppercase `11.5px`.
+- **Body**: `--text` (`#0f172a`), zebra-striped even rows (`--bg-elev-2`).
+- **Alignment**: Left-align text/IDs; right-align numeric counts, prices, and byte sizes (`tabular-nums`); left-align status tags.
+- **Row states**:
+  - Clickable rows: `--bg-elev-3` hover with `3px solid var(--accent)` left indicator.
+  - `.row-disabled`: Purple tint (`--purple-bg`, `--purple`) for non-indexed/non-queryable mapping fields.
+  - `.row-unassigned`: Amber tint (`--yellow-bg`, `--yellow-text`) for unassigned shards.
+- **Dense variant**: `.data-table.compact` for technical mapping, token, node, and shard tables.
+- **Search highlights**: `<mark>` created via DOM nodes using `--highlight-bg`, `--highlight-text`, and `1px solid var(--highlight-border)`.
 
-- White surface, blue border, strong shadow.
-- Hover: `#f0f9ff`.
-- Suggested name: `#0284c7`, bold.
-- Metadata: `#64748b`, small.
+### 5.8 Details, Code Blocks & Copy Action
 
-### Facets Sidebar
+- `<details class="details">`: Pale `--bg-elev-2` summary bar, `--accent-text` label, pointer cursor, CSS disclosure triangle (`▸` closed / `▾` open).
+- `<pre>`: `--code-bg` (`#0f172a`), `--code-text` (`#7dd3fc`), `1px solid var(--code-border)`, `--radius-md`, horizontal scroll. Use strictly for machine-readable JSON/DSL, never user-entered HTML.
+- `.code-input`: Monospace `<textarea>` with `--code-bg` and `--code-editor-text` (`#38bdf8`).
+- **Copy button**: Include a compact `.btn-ghost` `Copy` button on Query DSL disclosures and raw JSON blocks that switches briefly to `Copied` (`aria-live="polite"`).
 
-Use on the Projects tab.
+### 5.9 Charts (Chart.js)
 
-Rules:
+- Height: `270px` fixed container with responsive width.
+- Read all colours dynamically from CSS variables via `cssVar()`.
+- **Series palette order**:
+  1. `--accent` (`#0284c7`)
+  2. `--green` (`#059669`)
+  3. `--yellow` (`#d97706`)
+  4. `--cyan` (`#0891b2`)
+  5. `--orange` (`#ea580c`)
+  6. `--pink` (`#db2777`)
+  7. `--lime` (`#65a30d`)
+  8. `--indigo` (`#4f46e5`)
+- Grid lines: `--chart-grid`. Axis ticks and legend text: `--text-dim` (`#334155`).
+- Always render a sibling `.fallbackTable` if Chart.js fails to load or for keyboard/screen-reader inspection.
 
-- Sticky at `top: 120px`, with internal scrolling.
-- White surface, soft border, `12px` radius.
-- Header is uppercase `#0284c7`.
-- Facet buttons use `.facet-item`.
-- Facet hover: pale blue fill, blue border, slight horizontal movement.
-- Counts use `.facet-count` with pale blue fill and blue text.
-- On screens under `900px`, facets become static and full width.
+### 5.10 Async & Feedback States
 
-### Tables
-
-Use `.table-wrap` around `.data-table`.
-
-Rules:
-
-- White surface, soft border, rounded corners, subtle shadow.
-- Headers: `#f0f7ff` background, `#0369a1` text, `#bae6fd` bottom border, uppercase labels.
-- Body text: `#0f172a`.
-- Even rows: `#f8fafc`.
-- Hover on clickable rows: `#e0f2fe` with blue left accent.
-- Use `.data-table.compact` for dense technical tables.
-- Use `.row-disabled` for non-indexed/non-queryable metadata: purple fill/text.
-- Use `.row-unassigned` for unassigned shards: amber fill/text.
-- Search highlights: yellow fill, dark amber text, yellow border.
-
-### Details and Code Blocks
-
-Use `<details class="details">` for JSON, query bodies, and collapsible raw results.
-
-Rules:
-
-- Summary row: pale background, blue text, pointer cursor.
-- Open state uses a downward triangle; closed state uses a right triangle.
-- `<pre>` uses dark `#0f172a` background with `#7dd3fc` text to contrast with the light page.
-- Use `<pre>` only for machine-readable output, never for user-entered HTML.
-- Console and pipeline editors also use `.code-input`.
-
-### Charts
-
-Use Chart.js with colours read from CSS variables through `cssVar()`.
-
-Recommended series order:
-
-1. `#0284c7` blue
-2. `#4ade80` green
-3. `#d97706` amber
-4. `#0891b2` cyan
-5. `#ea580c` orange
-6. `#db2777` pink
-7. `#65a30d` lime
-8. `#4f46e5` indigo
-
-Rules:
-
-- Chart height: `270px`.
-- Use `--chart-grid` for grid lines.
-- Use dark text for labels.
-- Always provide `.fallbackTable` if Chart.js cannot load.
-- Charts should support tooltips and readable legends.
-- Do not use transparent/low-contrast fills for small values.
-
-### States
-
-| State | Component | Visual |
+| State | Component | Visual & Behaviour |
 |---|---|---|
-| Loading | `.loading` | White card, dashed border, muted text, centred |
-| Empty | `.placeholder` | White card, dashed border, muted text |
-| Error | `.error-card` | Red border, `#fef2f2` background, dark red text |
-| Info | `.card.note` | Amber border, `#fffbeb` background, dark amber text |
-| Success | `.tag-green` / `.pill-status.is-green` | Green dot/tag with green-tinted surface |
-
-Always show load state before async work and error state on failure.
-
-## Tab Specifications
-
-### Dashboard
-
-Purpose: show live cluster and index facts without hard-coded values.
-
-Elements:
-
-- Header title and description.
-- `Refresh` button.
-- KPI cards for documents, store size, primary shards, replicas/unassigned shards.
-- Cluster health pill.
-- Index card.
-- Yellow-health explanation card when applicable.
-- Capability cards showing supported/unsupported Elasticsearch features.
-
-Visual priority:
-
-1. Cluster health.
-2. Index size and document count.
-3. Capability badges.
-4. Operational caveats.
-
-### Projects
-
-Purpose: full-text search, filters, facets, safe highlighting, and result inspection.
-
-Elements:
-
-- `Reset` and `Search` buttons.
-- Facet sidebar.
-- Search input with suggest dropdown.
-- Filter form: district, taluka, project type, status, promoter, price, price prefix, start/end dates, document counts, scrape flags, sort, page size.
-- Result metadata row.
-- Results table with highlight marks.
-- Query-used disclosure panel.
-
-Visual priority:
-
-1. Search input and primary Search button.
-2. Filters and facets.
-3. Result count and query metadata.
-4. Results table.
-
-### Project Detail
-
-Purpose: inspect one project including five non-indexed sections.
-
-Elements:
-
-- Project ID input and `Load` button.
-- `Back to Projects` button.
-- Core KV cards.
-- Five section cards:
-  - Project Profile
-  - Project Summary
-  - Promoters
-  - Progress & RERA Actions
-  - More Projects by The Same Developer
-- Nested `<details>` blocks for complex objects.
-- Source/map links when safe.
-
-Visual priority:
-
-1. Project identity.
-2. Core indexed fields.
-3. Non-indexed stored sections.
-4. Raw source links.
-
-### Analytics
-
-Purpose: demonstrate Elasticsearch aggregations visually.
-
-Elements:
-
-- `Refresh` button.
-- KPI cards for overview values.
-- Six Chart.js cards:
-  - Projects by district
-  - Projects by taluka
-  - Projects by status
-  - Projects by type
-  - Registrations by year
-  - Start dates by year
-- Table fallback for each chart.
-
-Visual priority:
-
-1. Aggregation totals.
-2. Charts.
-3. Fallback tables.
-4. Date coverage caveat.
-
-### Data Quality
-
-Purpose: expose missing fields, scrape coverage, casing collisions, and pipeline dry-run results.
-
-Elements:
-
-- `Refresh` button.
-- KPI cards: documents, missing price, missing start date, docs downloaded, scrape errors.
-- Missing fields table.
-- Scrape coverage KV card.
-- District taluka collision cards.
-- Malformed date caveat note.
-- Pipeline simulator:
-  - `.code-input` textarea.
-  - `Simulate` button.
-  - Result disclosure.
-  - `pipeline_missing` graceful message.
-
-Visual priority:
-
-1. Quality KPIs.
-2. Missing fields.
-3. Collisions.
-4. Pipeline simulation.
-
-### Pagination & Export
-
-Purpose: compare paging strategies and stream a bounded CSV.
-
-Elements:
-
-- Page N card: page number, size, `Go`, result table, query panel.
-- Cursor card: `Next 100`, `Reset cursor`, cursor info, result table, query panel.
-- PIT card: `Open PIT`, `Next (PIT)`, `Close PIT`, session info, results.
-- CSV export card: limit input and `Export CSV` link.
-
-Visual priority:
-
-1. Paging strategy explanation.
-2. Controls.
-3. Result tables.
-4. Cursor/PIT state text.
-5. Export link.
-
-### Mapping & Indices
-
-Purpose: inspect mapping, stats, aliases, shard architecture, and analyzer output.
-
-Elements:
-
-- `Refresh` button.
-- Stats KPIs: documents, store, segments, total queries.
-- Mapping fields table with Indexed/Enabled columns.
-- Aliases card.
-- Single-shard/replica architecture note.
-- Analyzer tool:
-  - Text input.
-  - Field select.
-  - `Analyze` button.
-  - Token table.
-  - Query-used disclosure.
-
-Visual priority:
-
-1. Mapping field table.
-2. Index stats.
-3. Indexed vs stored-only distinction.
-4. Analyzer output.
-
-### Ops
-
-Purpose: show cluster health, nodes, shards, and the documented P13 admin runbook.
-
-Elements:
-
-- `Refresh` button.
-- Cluster health KV card.
-- Nodes table.
-- Shards allocation table.
-- P13 note listing intentionally excluded admin operations.
-
-Visual priority:
-
-1. Cluster health.
-2. Unassigned shards.
-3. Node metrics.
-4. Admin runbook caveat.
-
-### Console
-
-Purpose: run guarded Query DSL against the index.
-
-Elements:
-
-- Query DSL `.code-input` textarea.
-- `Run Query` button.
-- Result metadata row.
-- Raw result disclosure.
-- Query-used disclosure.
-
-Keyboard:
-
-- `Ctrl + Enter` runs the query.
-
-Visual priority:
-
-1. Query editor.
-2. Run action.
-3. Result count and timings.
-4. Raw JSON.
-5. Guardrail explanation.
-
-## Accessibility Requirements
-
-- Keep `:focus-visible` outline: `2px solid var(--focus)`, `outline-offset: 2px`.
-- Every button must have a visible text label.
-- Every input must have a `<label>`.
-- Preserve the existing `prefers-reduced-motion` override.
-- Use colour plus text for all status states.
-- Keep table headers in `<th>` elements.
-- Keep navigation inside `<nav aria-label="Sections">`.
-- Add `aria-live="polite"` to async result/status containers when implementing future changes.
-- Add `role="tablist"`, `role="tab"`, `aria-selected`, and `aria-controls` when tabs are next modified.
-- Do not block zoom or force fixed-height content that clips text.
-- Maintain a minimum `4.5:1` contrast ratio for normal text.
-
-## Responsive Rules
-
-### Desktop
-
-- Full header with brand subtitle and status pills.
-- Projects layout: `260px` facet sidebar plus content.
-- Card grids use two columns where suitable.
-- KPI cards auto-fit with `minmax(200px, 1fr)`.
-- Charts auto-fit with `minmax(340px, 1fr)`.
-
-### Tablet / Mobile (`max-width: 900px`)
-
-- Header padding changes to `12px 18px`.
-- Brand subtitle hides.
-- Tabs remain horizontally scrollable and wrap where possible.
-- Main padding changes to `20px 16px 36px`.
-- Projects layout becomes one column.
-- Facets become static with no max-height.
-- `.grid-2` becomes one column.
-
-## Frontend Change Checklist
-
-Use this checklist whenever the frontend is edited.
-
-1. Keep `color-scheme: light`.
-2. Add or update colours in `:root` first; do not introduce scattered hex values.
-3. Replace inline styles with reusable classes where practical.
-4. Keep the sticky header white with pale blue border and shadow.
-5. Keep all primary actions blue and high contrast.
-6. Keep status colours semantic and labelled.
-7. Keep tables dense, white, and blue-headed.
-8. Keep all backend-provided strings rendered as text, not HTML.
-9. Keep highlight rendering through safe DOM node creation.
-10. Keep Chart.js colours sourced from CSS variables.
-11. Keep chart fallback tables.
-12. Keep loading, empty, and error states consistent.
-13. Add visible focus to every new interactive element.
-14. Add keyboard behaviour to new controls where appropriate.
-15. Test below `900px` width.
-16. If `styles.css` changes, bump `frontend/index.html` asset version from `?v=2` to the next version so browsers do not reuse cache.
-17. If `app.js` changes, bump its `?v=` version too.
-18. Run `make check` after changes.
-19. Run `pytest` if any backend-facing behaviour changes.
-20. Verify `http://127.0.0.1:8000/` after serving with `make frontend`.
-
-## Do / Do Not
-
-### Do
-
-- Use white cards on pale blue pages.
-- Use sky blue for selection, focus, links, and primary actions.
-- Use amber notes for caveats.
-- Use red only for errors.
-- Use purple for non-indexed metadata.
-- Use strong dark text for all readable values.
-- Use safe text rendering for all Elasticsearch data.
-- Use compact tables for technical output.
-
-### Do Not
-
-- Do not create a dark mode.
-- Do not use neon or low-contrast colours.
-- Do not rely on colour alone.
-- Do not use emoji as UI icons.
-- Do not inject formatted backend text as HTML.
-- Do not hide errors behind colour-only indicators.
-- Do not use leading wildcard examples in the console.
-- Do not expose write/admin operations in the UI.
+| Loading | `.loading` | White card, dashed `--border`, centred muted text, `aria-busy="true"` |
+| Empty (no results) | `.placeholder` | White card, dashed `--border`, clear message + reset/broaden hint |
+| Error | `.error-card` | `--red` border, `--red-bg` fill, `--red-text` message + retry action |
+| Caveat / Note | `.card.note` | `--yellow` border, `--yellow-bg` fill, `--yellow-text` |
+| Success | `.tag-green` / `.pill-status.is-green` | Green dot + text label on `--green-bg` |
+
+Always render the loading state before async work begins and replace it cleanly with results, empty state, or `.error-card` on completion. Announce result-count updates inside an `aria-live="polite"` region.
+
+---
+
+## 6. Tab Specifications
+
+### 6.1 Dashboard
+- **Purpose**: Live cluster and index facts with zero hard-coded values.
+- **Elements**: Header + `Refresh` button; KPI cards (documents, store size, primary shards, replicas/unassigned shards); `#cluster-pill`; Index card; conditional yellow-health explanation card; capability cards (supported vs. unsupported Elasticsearch features).
+- **Visual Priority**: (1) Cluster health → (2) Index size & doc count → (3) Capability badges → (4) Operational caveats.
+
+### 6.2 Projects
+- **Purpose**: Full-text search, multi-facet filtering, safe highlighting, and result inspection.
+- **Elements**: `Reset` + `Search` buttons; sticky facet sidebar; search input with `.suggest-box`; filter form (district, taluka, project type, status, promoter, price, price prefix, start/end dates, document counts, scrape flags, sort, page size); `aria-live="polite"` result metadata row; results table with safe `<mark>` highlights; query-used `<details>` panel.
+- **Visual Priority**: (1) Search input + `Search` button → (2) Filters & facets → (3) Result count & `took` metadata → (4) Results table.
+
+### 6.3 Project Detail
+- **Purpose**: Inspect a single project, including its five non-indexed stored sections.
+- **Elements**: Project ID input + `Load` button; `Back to Projects` button; core indexed KV cards; five section cards (`Project Profile`, `Project Summary`, `Promoters`, `Progress & RERA Actions`, `More Projects by The Same Developer`); nested `<details>` for complex objects; safe external source/map links (`rel="noopener noreferrer"`).
+- **Visual Priority**: (1) Project identity → (2) Core indexed fields → (3) Non-indexed stored sections → (4) Raw source links.
+
+### 6.4 Analytics
+- **Purpose**: Visual demonstration of Elasticsearch aggregations.
+- **Elements**: `Refresh` button; overview KPI cards; six Chart.js cards (`Projects by district`, `Projects by taluka`, `Projects by status`, `Projects by type`, `Registrations by year`, `Start dates by year`), each with a `.fallbackTable`; date-coverage caveat note.
+- **Visual Priority**: (1) Aggregation totals → (2) Charts → (3) Fallback tables → (4) Date coverage caveat.
+
+### 6.5 Data Quality
+- **Purpose**: Expose missing fields, scrape coverage, casing collisions, and ingest pipeline dry-run results.
+- **Elements**: `Refresh` button; KPI cards (documents, missing price, missing start date, docs downloaded, scrape errors); missing fields table; scrape coverage KV card; district/taluka collision cards; malformed date `.card.note`; pipeline simulator (`.code-input`, `Simulate` button, result disclosure, graceful `pipeline_missing` message).
+- **Visual Priority**: (1) Quality KPIs → (2) Missing fields → (3) Collisions → (4) Pipeline simulation.
+
+### 6.6 Pagination & Export
+- **Purpose**: Compare paging strategies (`from`/`size`, `search_after` cursor, PIT) and stream a bounded CSV.
+- **Elements**: Page N card (`page`, `size`, `Go`, results, query panel); Cursor card (`Next 100`, `Reset cursor`, cursor state text, results, query panel); PIT card (`Open PIT`, `Next (PIT)`, `Close PIT`, active/closed session badge + expiry note, results); CSV export card (limit input + `Export CSV` link).
+- **Visual Priority**: (1) Strategy explanation → (2) Controls → (3) Result tables → (4) Cursor/PIT state → (5) Export link.
+
+### 6.7 Mapping & Indices
+- **Purpose**: Inspect mapping, index stats, aliases, shard architecture, and analyzer tokenization.
+- **Elements**: `Refresh` button; stats KPIs (documents, store, segments, total queries); mapping fields table with `Indexed` / `Enabled` columns (`.row-disabled` for non-indexed fields); aliases card; single-shard/replica architecture note; analyzer tool (text input, field select, `Analyze` button, token table, query-used disclosure).
+- **Visual Priority**: (1) Mapping field table → (2) Index stats → (3) Indexed vs. stored-only distinction → (4) Analyzer output.
+
+### 6.8 Ops
+- **Purpose**: Show cluster health, node metrics, shard allocation, and the documented P13 admin runbook.
+- **Elements**: `Refresh` button; cluster health KV card; nodes table; shards allocation table (`.row-unassigned` for unassigned shards); P13 `.card.note` listing intentionally excluded admin operations.
+- **Visual Priority**: (1) Cluster health → (2) Unassigned shards → (3) Node metrics → (4) Admin runbook caveat.
+
+### 6.9 Console
+- **Purpose**: Execute guarded read-only Query DSL against `gujrat_rera_data`.
+- **Elements**: Guardrail explanation note; `.code-input` Query DSL textarea with client-side JSON validation; `Run Query` button (with `Ctrl + Enter` / `Cmd + Enter` shortcut hint); `aria-live="polite"` result metadata row (`hits`, `took`); raw result disclosure; query-used disclosure.
+- **Visual Priority**: (1) Query editor → (2) Run action → (3) Result count & timings → (4) Raw JSON → (5) Guardrail explanation.
+
+---
+
+## 7. Accessibility & Responsive Standards
+
+### 7.1 Accessibility Checklist (WCAG 2.1 AA)
+
+- Maintain `:focus-visible` outline: `2px solid var(--focus); outline-offset: 2px;`.
+- Provide a visible text label on every button and a `<label>` for every input/select/textarea.
+- Preserve `@media (prefers-reduced-motion: reduce)` to disable transitions and hover transforms.
+- Use `role="tablist"`, `role="tab"`, `aria-selected`, `aria-controls`, and arrow-key navigation on tabs.
+- Use `aria-live="polite"` on async result counts, status pills, and error banners.
+- Keep `<th>` semantic headers in all tables and never block browser zoom (`user-scalable=no` is forbidden).
+- Ensure interactive controls on touch devices meet at least `44×44px` hit targets.
+
+### 7.2 Responsive Breakpoints
+
+- **Desktop (`> 900px`)**: Full header with `.brand-sub` and status pills; `260px` sticky `.facets` sidebar + fluid results column; `.grid-2` two-column cards; KPI grid `minmax(200px, 1fr)`; Charts grid `minmax(340px, 1fr)`.
+- **Tablet / Mobile (`≤ 900px`)**: Header padding `12px 18px`; hide `.brand-sub`; tabs wrap and scroll horizontally; `main` padding `20px 16px 36px`; Projects layout collapses to single column; `.facets` becomes static (`max-height: none`); `.grid-2` collapses to single column.
+
+---
+
+## 8. Frontend Change & Verification Checklist
+
+1. Keep `color-scheme: light` on `:root`.
+2. Add or update colours in `:root` first; eliminate scattered hex values.
+3. Use `--accent-text` (`#0369a1`) for small blue text and `--text-faint-tinted` (`#475569`) on pale-blue surfaces (`≥ 4.5:1` contrast).
+4. Replace inline styles with reusable utility/component classes.
+5. Keep the sticky header white with `--header-border` and subtle blue shadow.
+6. Keep primary actions blue, high-contrast, and limited to one per panel.
+7. Pair all semantic status colours with explicit text labels or dots.
+8. Keep tables dense, white, blue-headed, and aligned (`tabular-nums` for numbers).
+9. Render all backend-provided strings via safe DOM text nodes (`textContent`), never `innerHTML`.
+10. Build search highlights via safe DOM node creation.
+11. Source all Chart.js colours from CSS variables via `cssVar()` and retain `.fallbackTable`.
+12. Ensure loading, empty, and `.error-card` states are wired for every async call, with `aria-live="polite"` updates.
+13. Verify `:focus-visible` and keyboard navigation (`Tab`, `Enter`, `Escape`, arrow keys on tabs/suggest) on all new controls.
+14. Test layout and horizontal table scroll below `900px` width.
+15. If `styles.css` changes, bump the `?v=` asset version in `frontend/index.html` (e.g., `?v=2` → `?v=3`).
+16. If `app.js` changes, bump its `?v=` asset version in `frontend/index.html` as well.
+17. Run `make check` after changes.
+18. Run `pytest` if any backend-facing behaviour changes.
+19. Serve with `make frontend` and verify `http://127.0.0.1:8000/`.
+
+---
+
+## 9. Do / Do Not
+
+| Do | Do Not |
+|---|---|
+| Use white cards (`--bg-elev`) on pale blue pages (`--bg`) | Create a dark mode or theme toggle |
+| Use `--accent-text` for small blue text and `--accent` for borders/fills | Use `#0284c7` for small text on white or `#94a3b8` for meaningful placeholders |
+| Use amber `.card.note` for caveats and red `.error-card` for errors | Hide errors behind colour-only indicators or use emoji as UI icons |
+| Use purple (`.row-disabled`, `.tag-muted`) for non-indexed metadata | Inject backend-provided strings or highlights as raw HTML |
+| Use `tabular-nums` and compact tables for technical output | Expose write/admin operations or leading-wildcard console examples |
