@@ -1,7 +1,7 @@
 # Compact Context — Gujrat RERA Explorer
 
 ## Objective
-Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gujrat_rera_data` (17,271 docs) with 9 tabs, following `PLAN.md` phase-by-phase with review checkpoints. Phases 0–5 (all backend and frontend features) are complete; Phase 6 (unit/integration test suite) is next.
+Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gujrat_rera_data` (17,271 docs) with 10 active tabs, following `PLAN.md` phase-by-phase with review checkpoints. Phases 0–6 plus a read-only `Map / Boundaries` tab are in scope; native ES geo DSL remains out of scope.
 
 ## Important Details
 - ES: `http://192.168.1.14:9200`, cluster `elasticsearch`, node `rajiv-omen`, v8.19.23, yellow, 69 primary / 36 unassigned shards.
@@ -10,7 +10,9 @@ Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gu
 - Read-only constraints: no index/document/template/ILM mutations; allowed non-mutating calls include GET APIs, `POST /_pit`, `DELETE /_pit`, `POST /_analyze`, `POST /_ingest/pipeline/{id}/_simulate`; no scripts, `script_fields`, `runtime_mappings`, `regexp`, or leading wildcard.
 - `price` is keyword: `term`/`prefix`/`terms` only, NEVER numeric `range`/sort. Dates: `dd-MM-yyyy` with explicit `format`. `from + size <= 10000`.
 - Envelope: `{data, meta:{index,total,returned,es_took_ms,wall_ms,query_used}}`; errors: `{error:{code,message,detail:"redacted"}}`.
-- Highlighting uses `[[HL]]`/`[[/HL]]`; browser builds `<em>` DOM nodes, never injects ES text as HTML.
+- Highlighting uses `[[HL]]`/`[[/HL]]`; browser builds `<mark>` DOM nodes, never injects ES text as HTML.
+- Exact/prefix keyword clauses use `case_insensitive: true`; `plot`, `Plot`, `PLOT`, `PLot` match the same search/suggest/filter results.
+- Geo is partial/read-only: live mapping has no `geo_point`/`geo_shape`. `Project Profile.Map Location` holds boundary rings in `_source` (17,271 docs, 16,955 usable, 312 degenerate, 4 unparseable, 105,750 points, Ahmedabad 5,305). No index writes.
 - Python **3.11**, venv `C:\D-Drive\ElasticSearch_project\.venv`, no DB/auth/Docker/build step.
 - Installed: fastapi 0.165.0, elasticsearch 8.19.3, uvicorn 0.54.0, pydantic-settings 2.16.3, pytest 9.2.0, httpx 0.28.1, pytest-asyncio 1.5.0, aiohttp.
 - Docs claim `residency+Ahmedabad+Ongoing=96`; live returns **97** (data drift — assert live, not hard-coded).
@@ -36,14 +38,20 @@ Build a read-only FastAPI + vanilla JS/Chart.js app over Elasticsearch index `gu
   - `backend/routes.py`: Added `POST /api/analyze`, `GET /api/ops/health`, `GET /api/ops/nodes`, `GET /api/ops/shards`, and `POST /api/query/{index}` with recursive AST allowlist (`_validate_console_body`), blocking scripts, wildcards, and non-whitelisted keys.
   - `frontend/index.html` & `frontend/app.js`: Mapping & Indices tab (with live analyzer), Ops tab (health, node heap/cpu, shard allocator), and Guarded Console tab.
 - **All 30 API & contract checks passed**: Verified live against Elasticsearch 8.19.23.
+- **Phase 6**: `pytest` suite with 45 passing tests; `make check` and `git diff --check` pass (CRLF warnings only).
+- **UI/UX polish**: accessible light-mode styling, safe highlight rendering, cache busting (now `?v=5`); committed/pushed as `ecb1b42 Polish explorer UI accessibility and styling`.
+- **Case-insensitive matching**: `_term_clause`, `_prefix_clause`, `_text_filter` in `backend/queries.py` plus tests; verified live for `plot`/`Plot`/`PLOT`/`PLot`; committed/pushed as `b982822 Add case-insensitive exact and prefix matching`.
+- **Geo feasibility investigation**: live mapping checked, no geo fields found; `Map Location` holds boundary rings in all 17,271 docs; docs rewritten for read-only map lab.
 
 ### Active
-- All 9 frontend tabs and 25 API routes are fully implemented and running.
-- Ready for comprehensive test suite creation and bug hunting (`tests/` directory).
+- All 10 frontend tabs and 26 API routes are implemented, including the `Map / Boundaries` tab and `/api/projects/boundaries`.
+- Docs describe read-only boundary rendering, bbox/radius/polygon geometry filters, viewport batches, and LRU caching.
+- Full suite currently passes with `53 passed`; `make check` passes and `git diff --check` reports CRLF warnings only.
+- Browser QA verified Ahmedabad load (5,388 visible), viewport bbox (331), radius (185), polygon (180), popup + detail link, GET-only fetch calls, and 360px mobile map height.
 
 ### Blocked
-- (none)
+- Native ES geo DSL remains unavailable because the mapping has no geo fields and read-only mode forbids index changes; no index writes are required for the map lab.
 
 ## Next Move
-1. Build out the formal `pytest` test suite in `tests/` (`test_queries.py`, `test_validators.py`, `test_errors.py`, `test_routes.py`, `test_streams.py`).
-2. Run full testing suite to identify any edge-case bugs and verify query optimization.
+1. Browser-QA `Map / Boundaries`: Ahmedabad load, zoom clarity, polygon click popup, bbox/radius/polygon filters, cached re-render, and no write calls.
+2. Commit the completed read-only boundary-map work only when requested.

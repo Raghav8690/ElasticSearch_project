@@ -165,7 +165,7 @@ Elements:
 
 ### 4.3 Primary Navigation Tabs
 
-Nine tabs inside `<nav class="tabs" aria-label="Sections">` with `role="tablist"`:
+Ten active tabs inside `<nav class="tabs" aria-label="Sections">` with `role="tablist"`:
 
 1. `Dashboard`
 2. `Projects`
@@ -176,6 +176,7 @@ Nine tabs inside `<nav class="tabs" aria-label="Sections">` with `role="tablist"
 7. `Mapping & Indices`
 8. `Ops`
 9. `Console`
+10. `Map / Boundaries`
 
 Tab states & keyboard behaviour:
 
@@ -356,6 +357,14 @@ Always render the loading state before async work begins and replace it cleanly 
 - **Elements**: Guardrail explanation note; `.code-input` Query DSL textarea with client-side JSON validation; `Run Query` button (with `Ctrl + Enter` / `Cmd + Enter` shortcut hint); `aria-live="polite"` result metadata row (`hits`, `took`); raw result disclosure; query-used disclosure.
 - **Visual Priority**: (1) Query editor → (2) Run action → (3) Result count & timings → (4) Raw JSON → (5) Guardrail explanation.
 
+### 6.10 Map / Boundaries
+- **Purpose**: Show project boundary rings and teach read-only geometry filtering with the same query-visible pattern as other tabs.
+- **Data source**: `Project Profile.Map Location` from `_source`; no `geo_point`, no `geo_shape`, no index writes, no API key.
+- **Elements**: Read-only note; district/taluka/type/status/`q` filters; `bbox` input; radius (`lat`, `lon`, `distance_km`) input; polygon input; `Load Boundaries` button; Leaflet map container; result table; skipped-ring count; query-used disclosure.
+- **Rendering**: Leaflet + OpenStreetMap tiles via CDN, `preferCanvas: true`, auto-closed polygons, centroid markers for degenerate rings, stronger stroke/fill at higher zoom, click popup with project detail link.
+- **Interaction**: Filter changes fetch one viewport batch; `moveend` re-renders cached rings without another ES call; stale requests use `AbortController`; `aria-live` reports visible/cached/skipped counts.
+- **Visual Priority**: (1) Read-only note + filters → (2) Map → (3) Result counts → (4) Result table → (5) Query used.
+
 ---
 
 ## 7. Accessibility & Responsive Standards
@@ -373,7 +382,7 @@ Always render the loading state before async work begins and replace it cleanly 
 ### 7.2 Responsive Breakpoints
 
 - **Desktop (`> 900px`)**: Full header with `.brand-sub` and status pills; `260px` sticky `.facets` sidebar + fluid results column; `.grid-2` two-column cards; KPI grid `minmax(200px, 1fr)`; Charts grid `minmax(340px, 1fr)`.
-- **Tablet / Mobile (`≤ 900px`)**: Header padding `12px 18px`; hide `.brand-sub`; tabs wrap and scroll horizontally; `main` padding `20px 16px 36px`; Projects layout collapses to single column; `.facets` becomes static (`max-height: none`); `.grid-2` collapses to single column.
+- **Tablet / Mobile (`≤ 900px`)**: Header padding `12px 18px`; hide `.brand-sub`; tabs wrap and scroll horizontally; `main` padding `20px 16px 36px`; Projects layout collapses to single column; `.facets` becomes static (`max-height: none`); `.grid-2` collapses to single column; map container becomes `360px` tall and controls stack full width.
 
 ---
 

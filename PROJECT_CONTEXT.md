@@ -23,7 +23,7 @@ on the cluster but are out of scope for version 1.
 | Index | `gujrat_rera_data` (17,271 docs, 279.1 MB, 1 shard + 1 replica) |
 | Auth | None (plain HTTP). Optional API key/basic auth is documented but unused |
 | Mode | Read-only. No index, document, template, or ILM mutations |
-| Scope | Single index, 9 tabs. Geo is deliberately dropped (no geo fields) |
+| Scope | Single index, 10 active tabs. Boundary map reads `_source` rings read-only; no indexed geo fields |
 | Complexity | Learning project: no build step, no database, no login, no Docker required |
 
 Observed cluster facts (verify live at runtime, never hard-code counts):
@@ -51,6 +51,11 @@ A single-page explorer with a tab per area:
 7. Mapping and Indices
 8. Ops
 9. Console
+10. Map / Boundaries
+
+Current release has 10 active tabs. `Map / Boundaries` is a read-only geometry
+lab using `Project Profile.Map Location` from `_source`; native ES geo DSL is
+not available because the index has no geo fields.
 
 Each tab calls the FastAPI backend, which runs one or more optimized
 Elasticsearch queries and returns a consistent JSON envelope. The UI shows a
@@ -252,12 +257,149 @@ The mapping has `"dynamic": "false"`. Any field not in the table above is
 stored in `_source` but is **not indexed**. Do not search, filter, sort, or
 aggregate on unknown fields.
 
+### Boundary ring data (`Project Profile.Map Location`)
+
+The mapping has no `geo_point` or `geo_shape`. The read-only app therefore does
+not use ES geo DSL; it renders boundary rings from `_source` and derives
+centroids/bboxes in memory. Live source scan results:
+
+| Property | Observed value |
+|---|---:|
+| Documents with `Map Location` | 17,271 |
+| Usable rings (>=3 unique valid points) | 16,955 |
+| Degenerate rings (<3 unique points) | 312 |
+| Unparseable rings | 4 |
+| Total points | 105,750 |
+| Average / min / max points per ring | 6.2 / 3 / 149 |
+| Explicitly closed rings | 516 |
+| Rings with adjacent duplicate points | 439 |
+| Ahmedabad usable rings | 5,305 |
+
+The boundary endpoint may request only this path from disabled `Project
+Profile`: `Project Profile.Map Location`. All other disabled objects remain
+detail-only.
+
+#### Approved follow-up: map search-to-centroid patch (planned)
+
+This follow-up is `APPROVED_WITH_CONCERNS` from the 2026-11-24 office-hours pass.
+It is a design contract only; the code is unchanged. The goal is one seamless
+search-to-centroid flow: type a misspelled project name, focus the resolved
+project boundary, then show nearby projects without losing the indexed filters.
+
+Evidence already collected read-only:
+
+- `shivalik recidency` returns 0 hits with the current strict query;
+  `shivalik residency` returns 5 hits.
+- Fuzzy `AUTO` alone returns 11 hits but misses the likely target `projectId`
+  573 (`Shivalik Residences`).
+- `match_phrase_prefix` on analyzed `project_name` with `shivalik resid`
+  returns `projectId` 573 first.
+- `project_name.keyword` exists and accepts `case_insensitive: true`; the prefix
+  `resid` returns 64 hits with `projectId` 573 first.
+- Ahmedabad has 5,390 scanned projects; a tight bbox can reduce visible matches
+  to 41, which is why the default viewport filter must be removed.
+
+Backend query contract, applied only when `q` is present:
+
+```json
+{
+  "size": "<size>",
+  "_source": ["projectId", "project_name", "district", "taluka", "project_type", "project_status", "reg_no", "page_url", "Project Profile.Map Location"],
+  "sort": [{"_score": "desc"}, {"projectId": "asc"}],
+  "query": {
+    "bool": {
+      "minimum_should_match": 1,
+      "should": [
+        {
+          "multi_match": {
+            "query": "<original q>",
+            "fields": ["project_name^4", "promoter_name^3", "district^3", "taluka^2", "project_type^3", "reg_no^2", "page_url^1"],
+            "type": "cross_fields",
+            "operator": "or",
+            "minimum_should_match": "<current token rule>",
+            "lenient": true,
+            "boost": 10
+          }
+        },
+        {
+          "bool": {
+            "boost": 1,
+            "minimum_should_match": 1,
+            "should": [
+              {"match": {"project_name": {"query": "<normalized q>", "operator": "and", "boost": 4}}},
+              {"match_phrase_prefix": {"project_name": {"query": "<phrase prefix>", "boost": 3}}},
+              {"match": {"project_name": {"query": "<original q>", "fuzziness": "AUTO", "prefix_length": 1, "max_expansions": 25, "operator": "and", "boost": 1}}}
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+Normalization keeps the original text for fuzzy matching, lowercases and strips
+punctuation for exact matching, maps `recidency`, `recidancy`, `recidence`, and
+`recidance` to `residency`, and derives the phrase prefix from the normalized
+project-name phrase (for example `shivalik recidency` -> `shivalik resid`).
+The exact token rule, typo map, and phrase-prefix derivation still need to be
+frozen in tests before implementation.
+
+Response and pagination contract:
+
+- `size` and `after` remain per-page scan controls; `MAX_BOUNDARY_SIZE = 10000`.
+- Route default is `size = 1000`; UI supplies `2000`; the loader fetches up to
+  20 pages.
+- With `q`, use `_score` desc then `projectId` asc and a `[score, projectId]`
+  cursor; expose `score` on features, markers, and response meta.
+- Without `q`, keep the existing `projectId` sort and cursor unchanged.
+- `total` means ES total hits; `loaded` means accumulated boundary features plus
+  markers before geometry filtering; `returned` means the current response after
+  geometry filtering; `complete` is true at the ES end and false if maxPages
+  stops early.
+- Add `distance_km` with `haversine_km` whenever `lat`, `lon`, and
+  `distance_km` are present.
+- Show a truncation warning when `complete=false` or visible rows exceed 250.
+
+Frontend contract:
+
+- `Use current view` is unchecked by default. `collectBoundaryParams()` includes
+  `bbox` only when `#b-use-view` is checked and `lastBounds` is valid.
+- Unchecking clears `#b-bbox` and `lastBounds`; `moveend` no longer triggers a
+  load; **Load Boundaries** computes a fresh bbox only when the checkbox is
+  checked. If bounds are unavailable, show `Map bounds unavailable. Uncheck
+  current view or retry after the map loads.`
+- Auto-focus the first `q` result with a usable center with a distinct circle
+  marker, highlighted row, `focusBoundary()`, `focusMarker.openPopup()`, and zoom
+  14. A row click overrides focus; no usable center shows `Selected project has
+  no usable centroid.`
+- **Show nearby** is disabled without focus. It pins the focused project, sets
+  `nearbyMode = true`, clears `q`, unchecks `#b-use-view`, clears `#b-bbox`, fills
+  `lat` / `lon` from the focus center, sets `distance_km = 2`, and keeps
+  district / taluka / project type / status / registration number filters.
+- The pinned row is first, labelled `Pinned`, with distance `0.0`; other rows are
+  sorted by `distance_km` rounded to one decimal; the pinned row remains even
+  when no nearby rows are returned.
+- Row click re-centers nearby mode; a non-empty `q` submit exits nearby mode and
+  clears pinned state plus `lat` / `lon` / `distance_km`; Reset exits nearby
+  mode; missing radius inputs show `Radius requires latitude, longitude, and a
+  positive distance.`
+- Popup action text is `Open project detail`; it calls the existing
+  `openDetail(id)` and opens the Project detail tab.
+- Bump static asset cache busting from `?v=5` to `?v=6` in `index.html`.
+
+Open implementation contracts to freeze before coding:
+
+- Exact token rule, typo map, and phrase-prefix derivation.
+- Exact radius filter contract and pinned-row injection/count behavior.
+
 ### Field reference - display-only objects (`enabled: false`)
 
-These are never indexed. They are fetched only by the detail endpoint and
-rendered as section cards. Requesting a query/filter on any of them must return
-`field_missing` with a hint that a mapping change plus reindex would be
-required.
+These are never indexed. They are fetched by the detail endpoint and rendered
+as section cards; `Project Profile.Map Location` is additionally fetched by the
+boundary endpoint through a strict `_source` allowlist. Requesting a
+query/filter on any disabled field must return `field_missing` with a hint that
+a mapping change plus reindex would be required.
 
 | Object | Subsections (observed) | Approx. size |
 |---|---|---:|
@@ -267,10 +409,14 @@ required.
 | `Progress & RERA Actions` | Form-8, Block Progress, Project Progress, Block Booking Status, Blockwise Photos, Block Booking Details, P-E Compliance, Building Use Permission Details/Occupation Certificate Details (BU), Complaint, Penalty(Rs), Progress Status, QPR Compliance, Form5 Compliance, Notifications | 1.3 KB |
 | `More Projects by The Same Developer` | Array of `{Project Name, Taluka, District, Reg No., Status}` | 0.6 KB |
 
-`Project Profile.Map Location` is an array of `{lat, lng}` strings. It is not
-a `geo_point` and is not queryable; the detail view may use the first entry to
-render a static map link. Document URLs elsewhere in these objects are
-external URLs and must be rendered as sanitized `https` links only.
+`Project Profile.Map Location` is an array of `{lat, lng}` strings forming a
+project boundary ring. It is not a `geo_point` and cannot be queried with ES geo
+DSL; the detail view may still use its first valid point for a static map link,
+while the `Map / Boundaries` tab renders the whole ring as a polygon. Rings are
+auto-closed for display, and rings with fewer than three unique valid points are
+shown as centroid markers with a warning count. Document URLs elsewhere in
+these objects are external URLs and must be rendered as sanitized `https` links
+only.
 
 ### Observed live facet values
 
@@ -356,7 +502,7 @@ require writes are documented, not exposed.
 | P9 | Cleaning, mapping, bulk, failures, reindex, pipeline, CLI | Data Quality tab: missing fields, casing collisions, malformed dates; `_simulate` only if a pipeline exists |
 | P10 | from/size, search_after, PIT, scroll, scan, CSV | Pagination tab with cursor paging and streaming export |
 | P11 | Templates, aliases, reindex, shards, refresh, ILM, rollover | Mapping/Indices tab: stats, mappings, aliases, single-shard/replica yellow-cluster lesson; changes documented only |
-| P12 | geo_point / geo_shape queries | **Not applicable**: index has no geo fields. Tab dropped; documented in caveats |
+| P12 | geo_point / geo_shape queries | **Partial**: read-only boundary map with bbox/radius/polygon geometry; native ES geo DSL unavailable without index writes |
 | P13 | Security, users, roles, API keys, stats, slow logs, snapshot, restore, unassigned shard, indexing failure | Ops tab: health/nodes/shards, unassigned-replica explanation; admin tasks documented as a runbook |
 
 Read-only substitutes:
@@ -483,7 +629,7 @@ is empty):
   },
   "sort": [{"projectId": "asc"}],
   "highlight": {
-    "pre_tags": ["<em>"], "post_tags": ["</em>"],
+        "pre_tags": ["[[HL]]"], "post_tags": ["[[/HL]]"],
     "fields": {"project_name": {}, "promoter_name": {}}
   }
 }
@@ -501,8 +647,11 @@ Rules:
 - All UI date inputs are `yyyy-MM-dd`; convert them to `dd-MM-yyyy` in the
   backend, or send `"format": "dd-MM-yyyy"` as shown.
 - Highlight values are escaped by the frontend before insertion into the DOM.
-  A simple regex highlighter is acceptable if the UI prefers not to inject
-  raw `<em>` tags.
+  The frontend converts `[[HL]]` / `[[/HL]]` sentinels into safe `<mark>` text
+  nodes; never inject raw Elasticsearch highlight HTML.
+- Text-field matching is analyzer case-insensitive. Keyword `term` and `prefix`
+  clauses use `case_insensitive: true` so `plot` matches `Plot`, `PLOT`, and
+  `PLot`, and prefix filters can match `Plotted Development`.
 - Always add the unique `projectId` tie-breaker to the sort.
 - Allowed sort fields: `projectId`, `project_name.keyword`,
   `promoter_name.keyword`, `district`, `project_status`, `project_type`,
@@ -510,6 +659,34 @@ Rules:
   with `invalid_request`.
 - Observed check: `q=residency`, `district=Ahmedabad`,
   `project_status=Ongoing` returns 96 hits.
+
+#### `GET /api/projects/boundaries`
+
+Read-only boundary-map endpoint; register it before `/projects/{project_id}`.
+
+Parameters: common indexed filters (`q`, `district`, `taluka`,
+`project_type`, `project_status`, `promoter`, `reg_no`), `bbox`
+(`minLng,minLat,maxLng,maxLat`), radius (`lat`, `lon`, `distance_km`),
+`polygon` (`lat,lng;lat,lng;...`), `size` (default 1000, max 10000), and `after`
+(the last `projectId` for batching). bbox/radius/polygon filters are applied in
+Python after `_source` parsing; they are never inserted into ES DSL.
+
+The ES body uses only indexed filters plus:
+
+```json
+{"size": 1000, "_source": ["projectId", "project_name", "district", "taluka", "project_type", "project_status", "reg_no", "page_url", "Project Profile.Map Location"], "sort": [{"projectId": "asc"}]}
+```
+
+The standard `{data, meta}` envelope returns compact `features` with `ring`,
+`centroid`, and `bbox`, plus `markers` for degenerate rings, `skipped` counts,
+and `meta.boundary_filter` / `meta.cache_hit` / `meta.geo_note`. No ES geo DSL,
+scripts, runtime fields, or index writes are used.
+
+The approved search-to-centroid patch described in section 2 changes the `q`
+branch of this endpoint to typo-tolerant score-ranked matching with a
+`[score, projectId]` cursor, adds `score` and optional `distance_km` fields, and
+keeps bbox/radius/polygon geometry filtering in Python. Until that patch is
+implemented, the body above remains the current contract.
 
 #### `GET /api/projects/{project_id}`
 
@@ -867,7 +1044,7 @@ One HTML file, one CSS file, one JS file. No framework, no bundler.
 ### Layout
 
 - Header: app name, `ES_URL` host (no credentials), cluster status pill.
-- Top navigation: the 9 tabs.
+- Top navigation: 10 active tabs; `Map / Boundaries` is the read-only geometry tab.
 - Main panel per tab: controls, result table or chart, timing badge, and a
   `<details>` block labeled "Query used" containing the JSON request.
 - Footer: "Read-only demo. Timings are local wall-clock."
@@ -1045,8 +1222,12 @@ Do not start with the query console. Build the curated endpoints first.
 7. Implement mapping, stats, aliases, and field caps.
 8. Implement ops health/nodes/shards and the P13 runbook.
 9. Add the guarded query console.
-10. Add error handling, empty states, and the "field missing" messages.
-11. Write `README.md` with setup, `.env` example, endpoints, and a demo script.
+10. Add the read-only `Map / Boundaries` tab and `/api/projects/boundaries`.
+11. Add error handling, empty states, and the "field missing" messages.
+12. Write `README.md` with setup, `.env` example, endpoints, and a demo script.
+13. Apply the approved search-to-centroid patch: typo-aware `q`, score ordering
+    and cursor, explicit viewport bbox behavior, focus marker, pinned nearby
+    mode, truncation warnings, tests, and static cache bump to `?v=6`.
 
 ## 11. Acceptance criteria
 
@@ -1074,6 +1255,16 @@ Do not start with the query console. Build the curated endpoints first.
 - The query console rejects scripts, oversized pages, unknown keys, and any
   index other than `gujrat_rera_data`.
 - No endpoint accepts write operations.
+- After the planned search-to-centroid patch, `q=shivalik recidency` resolves
+  `Shivalik Residences` (`projectId` 573) through the fallback group, with results
+  ordered by `score` desc then `projectId` asc and paged by `[score, projectId]`.
+- After the planned patch, `Use current view` is unchecked by default, map moves
+  do not auto-reload boundaries, and a bbox is sent only when explicitly checked.
+- After the planned patch, **Show nearby** pins the focused project, uses a 2 km
+  radius from its centroid, retains indexed filters, sorts by `distance_km`, and
+  keeps the pinned row visible with no nearby rows.
+- After the planned patch, truncation warnings appear when the scan stops early
+  or more than 250 visible rows are available.
 
 ## 12. Caveats and index-shape drift
 
@@ -1103,8 +1294,9 @@ Do not start with the query console. Build the curated endpoints first.
   Elasticsearch measurement. Both are affected by the shared host.
 - **Single-node cluster.** A yellow cluster with unallocated replicas is
   expected, not an application failure.
-- **Geo is out of scope.** The mapping has no `geo_point` or `geo_shape`. The
-  lat/lng strings inside `Project Profile.Map Location` are display-only.
+- **Geo is partial and read-only.** Native `geo_point` / `geo_shape` DSL is
+  unavailable; `Map / Boundaries` renders `_source` rings and applies
+  bbox/radius/polygon filters in backend/frontend geometry code only.
 - **P13 admin tasks** cannot be performed by a read-only app. Keep them in the
   runbook text and do not add hidden write endpoints.
 
@@ -1130,5 +1322,14 @@ Do not start with the query console. Build the curated endpoints first.
    runbook.
 10. Console: run a simple `match` query, then confirm scripts, unknown keys,
     oversized pages, and other indices are rejected.
+11. Map / Boundaries: filter Ahmedabad, zoom into a boundary cluster, click a
+    polygon, then draw a bbox/radius filter and observe cached re-rendering. For
+    the planned patch, also search `shivalik recidency`, confirm the focus marker
+    on `Shivalik Residences`, click **Show nearby**, verify the pinned row and
+    `distance_km` sorting, and leave **Use current view** unchecked until a bbox
+    is requested explicitly.
 
-This is the full scope for version 1. Anything not listed here is out of scope.
+This is the full scope for v1 plus the read-only boundary-map lab and the
+approved search-to-centroid follow-up. Native ES geo queries remain out of scope
+because they would require index writes. Anything not listed here is out of
+scope.

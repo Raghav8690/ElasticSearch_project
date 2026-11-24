@@ -5,9 +5,9 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)](https://www.python.org/)
 [![License](https://img.shields.io/badge/Mode-Read--Only-green)](#non-negotiable-constraints)
 
-A high-performance, read-only educational web application that turns a real-world Elasticsearch index (`gujrat_rera_data` &mdash; 17,271 projects, 279.1 MB) into an interactive 9-tab exploration tool.
+A high-performance, read-only educational web application that turns a real-world Elasticsearch index (`gujrat_rera_data` &mdash; 17,271 projects, 279.1 MB) into an interactive 10-tab exploration tool.
 
-Designed to demonstrate real-world Elasticsearch concepts covering **12 of 13 practical exercises** (geo-spatial practical is omitted as no geo fields exist in the index). Instead of clean, synthetic mock datasets, this application works directly with real-world Indian real estate regulatory data containing dirty categorical values, custom date formats, casing inconsistencies, and large display-only non-indexed objects.
+Designed to demonstrate real-world Elasticsearch concepts covering **12 of 13 practical exercises fully plus a partial P12 map lab**. The live index has no `geo_point` / `geo_shape` fields, so native ES geo DSL is out of scope; instead, all 17,271 documents contain boundary rings under `Project Profile.Map Location`, rendered from `_source` with no index writes. Instead of clean, synthetic mock datasets, this application works directly with real-world Indian real estate regulatory data containing dirty categorical values, custom date formats, casing inconsistencies, and large display-only non-indexed objects.
 
 ---
 
@@ -24,7 +24,7 @@ Designed to demonstrate real-world Elasticsearch concepts covering **12 of 13 pr
   - [Prerequisites](#prerequisites)
   - [Configuration (`.env`)](#configuration-env)
   - [Running the Application](#running-the-application)
-- [Application Feature Tour (9 Tabs)](#application-feature-tour-9-tabs)
+- [Application Feature Tour (10 Active Tabs)](#application-feature-tour-10-active-tabs)
 - [API Surface Catalog](#api-surface-catalog)
 - [Elasticsearch Practicals Coverage Matrix](#elasticsearch-practicals-coverage-matrix)
 - [Non-Negotiable Constraints & Guardrails](#non-negotiable-constraints--guardrails)
@@ -42,6 +42,7 @@ Designed to demonstrate real-world Elasticsearch concepts covering **12 of 13 pr
 - **Safe Deep Pagination & Streaming CSV Export**: Supports cursor pagination via `search_after` and Point-in-Time (PIT) search contexts, including a streaming CSV export capable of serving all 17,271 records without running out of memory.
 - **Built-in Ops Learning**: Uses a single-node cluster with unassigned replicas as an educational feature rather than an error condition.
 - **Guarded Query Console**: Allows interactive Query DSL testing against `gujrat_rera_data` with a recursive allowlist that rejects dangerous operations (scripts, wildcards, oversized windows).
+- **Read-Only Boundary Map**: 10th tab renders project boundary rings from `_source` with Leaflet + OpenStreetMap; district/bbox/radius/polygon filters are computed without indexing or data mutation.
 
 ---
 
@@ -153,9 +154,9 @@ ElasticSearch_project/
 │   ├── es_client.py        # AsyncElasticsearch singleton, PIT registry, discovery
 │   ├── schemas.py          # Request models and standard response envelopes
 │   ├── queries.py          # Pure functions generating Elasticsearch Query DSL
-│   └── routes.py           # 25 read-only API endpoints + static route definitions
+│   └── routes.py           # 26 read-only API endpoints + static route definitions
 ├── frontend/
-│   ├── index.html          # Single-page HTML interface (9 tabs)
+│   ├── index.html          # Single-page HTML interface (10 active tabs)
 │   ├── app.js              # Vanilla JavaScript (fetch, Chart.js bindings, DOM renderer)
 │   └── styles.css          # Modern dashboard styling and responsive grid layout
 └── tests/
@@ -223,7 +224,10 @@ ALLOW_WRITES=false
 
 ---
 
-## Application Feature Tour (9 Tabs)
+## Application Feature Tour (10 Active Tabs)
+
+The 10 tabs below are active today. The `Map / Boundaries` tab is a read-only
+geometry lab; it does not imply native Elasticsearch geo fields.
 
 ### 1. Dashboard
 - Live cluster status pill (`yellow`, `green`, `red`), version (`8.19.23`), and node count.
@@ -232,9 +236,9 @@ ALLOW_WRITES=false
 - Capability badges displaying detected feature availability.
 
 ### 2. Projects
-- **Full-Text Search**: Search by `project_name` (boost ^3) and `promoter_name` (boost ^1) with safe DOM highlight rendering (`<em>` sentinels).
-- **Prefix Auto-Suggest**: Debounced (300 ms, min 2 chars) prefix search using `match_phrase_prefix`.
-- **Filters**: Exact terms for District, Taluka, Project Type, Project Status, Promoter, and Scrape Status.
+- **Full-Text Search**: Search by `project_name` (boost ^3) and `promoter_name` (boost ^1) with safe DOM highlight rendering (`[[HL]]` sentinels converted to `<mark>` nodes).
+- **Prefix Auto-Suggest**: Case-insensitive prefix matching for `plot`, `Plot`, `PLOT`, and `PLot`, with debounced (300 ms, min 2 chars) suggest results.
+- **Filters**: Case-insensitive exact and prefix terms for District, Taluka, Project Type, Project Status, Promoter, Registration Number, and Scrape Status.
 - **Price Constraints**: Exact price selection and prefix search (`prefix` on `price` keyword); strictly prohibits illegal numeric range queries.
 - **Date Ranges**: `start_date` and `end_date` date pickers formatted to `dd-MM-yyyy`.
 - **Facets Sidebar**: Live terms aggregations showing breakdown counts.
@@ -290,6 +294,24 @@ ALLOW_WRITES=false
 - JSON Query DSL editor with execution time metrics and hit counts.
 - **Security AST Validator**: Rejects write operations, `script`, `regexp`, leading wildcards, unauthorized indices, and query bodies exceeding allowed boundaries.
 
+### 10. Map / Boundaries
+- Interactive Leaflet + OpenStreetMap view of project boundary rings from `Project Profile.Map Location`; no API key or index writes.
+- Indexed filters first (`district`, `taluka`, `project_type`, `q`), then read-only bbox / radius / polygon geometry filtering in the backend.
+- Viewport-batched loading with an in-memory cache; zooming re-renders cached polygons without another Elasticsearch request.
+- Degenerate rings are shown as centroid markers and counted in the result meta instead of failing the map.
+
+#### Approved follow-up: map search-to-centroid patch (planned)
+
+- The approved next patch upgrades the boundary map from a viewport-batched ring browser into a name-resolution flow; it is **planned, not yet implemented**.
+  - `q` changes from a strict both-token match into an exact/current group plus a fallback group: normalized exact `project_name`, `match_phrase_prefix` on `project_name`, and fuzzy `match` with `fuzziness: AUTO`.
+  - Original typo text is preserved for fuzzy matching; normalized text strips punctuation and maps variants such as `recidency` / `recidence` to `residency`.
+  - With `q`, ES results are ordered by `_score` descending then `projectId` ascending; boundaries, markers, and response meta expose `score`, and pagination uses a `[score, projectId]` cursor. Without `q`, the existing `projectId` ordering and cursor remain unchanged.
+  - The map gains a distinct focus marker for the first usable search result, row-click focus, and a **Show nearby** action that pins that project and reloads with a 2 km radius centred on its centroid.
+  - Nearby results keep district / taluka / project type / status / registration number filters, drop `q`, sort by `distance_km`, and keep the pinned row visible at the top even when no nearby rows are returned.
+  - `Use current view` is unchecked by default; unchecking it clears `#b-bbox`, map moves no longer trigger auto-reloads, and **Load Boundaries** computes a fresh bbox only when the checkbox is checked.
+  - Table and map show truncation status when the scan stops early or more than 250 visible rows are available.
+  - The two contracts still to freeze before coding are the exact token / typo-map / phrase-prefix derivation rules and the exact radius-filter / pinned-row count behavior.
+
 ---
 
 ## API Surface Catalog
@@ -307,6 +329,7 @@ All endpoints are hosted under `/api` and return standardized envelopes:
 | | `GET /api/indices/{index}/aliases` | Cat aliases filtered to current index |
 | **Projects** | `GET /api/projects/search` | Multi-filter search with highlighting & sorting |
 | | `GET /api/projects/suggest` | Debounced prefix autocomplete via `match_phrase_prefix` |
+| | `GET /api/projects/boundaries` | Read-only boundary rings with bbox/radius/polygon filters and cached viewport batches |
 | | `GET /api/projects/facets` | Aggregations for dropdown filters and stats |
 | | `GET /api/projects/{project_id}` | Full detail with section extraction and fallback |
 | **Analytics** | `GET /api/analytics/overview` | Categorical aggregations for charts |
@@ -328,23 +351,29 @@ All endpoints are hosted under `/api` and return standardized envelopes:
 
 ## Elasticsearch Practicals Coverage Matrix
 
-This application covers **12 of the 13 Elasticsearch curriculum practicals**:
+This application covers **12 of the 13 Elasticsearch curriculum practicals fully**, with **P12 partial** as a read-only geometry/map lab:
 
 | Practical | Subject | Coverage in Gujrat RERA Explorer |
 |---|---|---|
 | **P1** | Cluster, Nodes & Health | Dashboard & Ops tabs; version 8.19.23, node metrics, yellow status |
 | **P2** | Index Lifecycle & CRUD | Read-only architecture; document retrieval by `_id`, query explanations |
 | **P3** | Mappings & Analyzers | Mapping tab (`dynamic: false`), Analyze panel, text vs keyword comparison |
-| **P4** | Query DSL & Highlights | Projects tab search filters with safe sentinel `<em>` highlighting |
+| **P4** | Query DSL & Highlights | Projects tab search filters with safe sentinel `[[HL]]` rendering into `<mark>` nodes |
 | **P5** | Bool Queries & Filtering | Strict separation of cached `bool.filter` vs scored `must` multi-match |
-| **P6** | Suggestions & Analyzers | Prefix suggest on `project_name` using `match_phrase_prefix` |
+| **P6** | Suggestions & Analyzers | Case-insensitive prefix suggest with `case_insensitive: true` and `match_phrase_prefix` |
 | **P7** | Relevance & Scoring | Multi-match field boosting (`project_name^3`, `promoter_name^1`) |
 | **P8** | Aggregations & Metrics | Analytics tab charts; terms aggregations, date histograms, stats |
 | **P9** | Data Quality & Ingestion | Missing field detection, casing collisions, pipeline `_simulate` |
 | **P10** | Pagination & Export | `from/size` vs `search_after` vs PIT; streaming CSV export |
 | **P11** | Aliases, Stats & Shards | Mapping & Indices tab; segment stats, aliases, shard replica lesson |
-| **P12** | Geo-spatial Queries | **N/A**: Index contains no `geo_point` fields (documented omission) |
+| **P12** | Geo-spatial Queries | **Partial**: 16,955 usable boundary rings rendered from `_source`; bbox/radius/polygon filtering is client/server geometry, not native ES geo DSL |
 | **P13** | Operations & Administration | Ops tab: node heap, unassigned shards, and administrative runbooks |
+
+> **Geo boundary note**: native ES `geo_point` / `geo_shape` queries are not
+> available because the mapping has no indexed geo fields and the app never
+> writes to the index. The `Map / Boundaries` tab reads boundary rings from
+> `_source`, computes centroids/bbox/geometry filters in the backend, and caches
+> normalized features in memory only.
 
 ---
 
@@ -353,7 +382,7 @@ This application covers **12 of the 13 Elasticsearch curriculum practicals**:
 1. **Read-Only Operation**: `ALLOW_WRITES=false` is enforced at all times. The only HTTP POST methods allowed are non-mutating search/analysis APIs (`/_search`, `/_pit`, `/_analyze`, `/_simulate`).
 2. **Field Type Safety (`price`)**: `price` is indexed as a `keyword` string (e.g., `"1.67 Crore Onwards"`). Numeric range queries and numeric sorting on `price` are strictly prohibited; only `term` and `prefix` queries are permitted.
 3. **Date Formatting**: `start_date` and `end_date` utilize the custom Indian format `dd-MM-yyyy`. All range queries must explicitly include `"format": "dd-MM-yyyy"`.
-4. **Source Filtering**: Search and list endpoints must include only the 13 core queryable fields and explicitly exclude the five disabled objects to avoid payload bloat (~17 KB per document). Disabled objects are loaded only on the detail view.
+4. **Source Filtering**: Search and list endpoints must include only the 13 core queryable fields and explicitly exclude the five disabled objects to avoid payload bloat (~17 KB per document). Disabled objects are loaded only on the detail view; the boundary endpoint is the sole exception, with a strict `_source` allowlist for `Project Profile.Map Location` only.
 5. **Result Window Limit**: `from + size > 10000` is rejected with an `invalid_request` error, instructing the client to use `search_after`.
 6. **Console AST Whitelist**: The guarded console verifies queries through a recursive allowlist, barring `script`, `regexp`, leading wildcards, and requests to any index other than `gujrat_rera_data`.
 
@@ -361,7 +390,7 @@ This application covers **12 of the 13 Elasticsearch curriculum practicals**:
 
 ## Interactive Demo Script
 
-Follow this 10-step script to evaluate or demonstrate the system:
+Follow this 11-step script to evaluate or demonstrate the system:
 
 1. **Open Dashboard**: Verify cluster name `rajiv-omen`, version `8.19.23`, yellow status, and live `17,271` document count. Read the single-node replica explanation card.
 2. **Search with Filters**: Go to **Projects**, enter `q=residency`, filter District `Ahmedabad`, and Status `Ongoing`. Confirm exactly 96 hits and inspect the highlighted project names.
@@ -373,6 +402,7 @@ Follow this 10-step script to evaluate or demonstrate the system:
 8. **Test Pagination**: Go to **Pagination**; test `Page N (from/size)`. Advance beyond 10,000 hits to trigger the `max_result_window` educational notice. Switch to `Next 100 (search_after)` and watch the cursor update.
 9. **Export CSV**: Click **Export CSV** to stream project records with memory safety and formula sanitization.
 10. **Test Guarded Console**: In **Console**, run a valid `match` query, then attempt a disallowed `script` or `wildcard` to observe the AST rejection rule.
+11. **Explore Boundaries**: In **Map / Boundaries**, filter district `Ahmedabad`, zoom into a cluster, click a project polygon, then draw a bbox or radius filter and confirm cached re-rendering on zoom. For the planned patch, also try `q=shivalik recidency`, confirm `Shivalik Residences` is the focus marker, click **Show nearby**, verify the pinned row and `distance_km` sorting, and leave **Use current view** unchecked until a bbox is requested explicitly.
 
 ---
 
@@ -398,5 +428,7 @@ pytest tests/test_errors.py
 - **Query Builder Branching**: Validates that empty filters are omitted from DSL, date formats are added, and price queries never use numeric ranges.
 - **AST Validator**: Confirms rejection of scripts, nested wildcards, oversized pages, and forbidden indices.
 - **Security & Sanitization**: Asserts that Elasticsearch exceptions, passwords, and sensitive credentials are never leaked to client responses.
-- **Route Precedence**: Ensures static API routes (`/api/projects/search`) take precedence over dynamic route variables (`/api/projects/{project_id}`).
+- **Route Precedence**: Ensures static API routes (`/api/projects/search`, `/api/projects/boundaries`) take precedence over dynamic route variables (`/api/projects/{project_id}`).
+- **Boundary Geometry**: Validates ring parsing, bbox/radius/polygon filters, invalid-ring fallback, `_source` allowlisting, and cache-safe compact responses.
+- **Map Search-to-Centroid Patch (planned)**: Add tests for typo fallback, `_score` ordering and `[score, projectId]` cursors, explicit-bbox-only loading, focus marker / pinned nearby mode, `distance_km` sorting, truncation warnings, and static cache bump to `?v=6`.
 - **Streaming Export**: Verifies formula injection prevention and guaranteed Point-in-Time closure upon stream completion or client disconnection.
