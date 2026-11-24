@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
   <title>Gujrat RERA Explorer</title>
-  <link rel="stylesheet" href="/static/styles.css?v=4" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=5" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -35,6 +36,7 @@
       <button class="tab" id="tab-mapping" role="tab" aria-selected="false" aria-controls="panel-mapping" data-tab="mapping" tabindex="-1">Mapping &amp; Indices</button>
       <button class="tab" id="tab-ops" role="tab" aria-selected="false" aria-controls="panel-ops" data-tab="ops" tabindex="-1">Ops</button>
       <button class="tab" id="tab-console" role="tab" aria-selected="false" aria-controls="panel-console" data-tab="console" tabindex="-1">Console</button>
+      <button class="tab" id="tab-boundaries" role="tab" aria-selected="false" aria-controls="panel-boundaries" data-tab="boundaries" tabindex="-1">Map / Boundaries</button>
     </nav>
   </div>
 
@@ -372,6 +374,71 @@
         <div id="console-query"></div>
       </div>
     </section>
+
+    <section class="panel" id="panel-boundaries" role="tabpanel" aria-labelledby="tab-boundaries" data-panel="boundaries">
+      <div class="panel-head">
+        <div>
+          <h2>Map / Boundaries</h2>
+          <p>Read-only project boundary rings with visible, viewport-batched geometry filters.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn" type="button" id="boundaries-zoom">Zoom to results</button>
+          <button class="btn" type="button" id="boundaries-reset">Reset</button>
+          <button class="btn btn-primary" type="button" id="boundaries-load">Load Boundaries</button>
+        </div>
+      </div>
+      <div class="card note boundary-note">
+        <div class="card-head"><h3>Read-only geometry lab</h3></div>
+        <p>
+          Boundaries come from the disabled <code>Project Profile.Map Location</code> object in <code>_source</code>.
+          There are no indexed geo fields and no writes; indexed filters run first, then bbox, radius, and polygon checks run in the backend.
+        </p>
+      </div>
+      <form class="filters boundary-filters" id="boundaries-form">
+        <div class="field field-wide">
+          <label for="b-q">Search project / promoter</label>
+          <input id="b-q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" />
+        </div>
+        <div class="field"><label for="b-district">District</label><select id="b-district"><option value="">All districts</option></select></div>
+        <div class="field"><label for="b-taluka">Taluka</label><select id="b-taluka"><option value="">All talukas</option></select></div>
+        <div class="field"><label for="b-type">Project type</label><select id="b-type"><option value="">All types</option></select></div>
+        <div class="field"><label for="b-status">Status</label><select id="b-status"><option value="">All statuses</option></select></div>
+        <div class="field"><label for="b-reg-no">Registration number</label><input id="b-reg-no" type="text" placeholder="Exact reg_no" /></div>
+        <div class="field field-wide">
+          <label for="b-bbox">Bounding box</label>
+          <input id="b-bbox" type="text" placeholder="minLng,minLat,maxLng,maxLat" />
+        </div>
+        <div class="field"><label for="b-lat">Radius centre latitude</label><input id="b-lat" type="number" step="any" placeholder="22.3000" /></div>
+        <div class="field"><label for="b-lon">Radius centre longitude</label><input id="b-lon" type="number" step="any" placeholder="72.6000" /></div>
+        <div class="field"><label for="b-distance">Radius (km, max 200)</label><input id="b-distance" type="number" step="any" min="0.001" max="200" placeholder="10" /></div>
+        <div class="field"><label for="b-size">Batch size</label><select id="b-size"><option>1000</option><option>2000</option><option>5000</option><option>10000</option></select></div>
+        <div class="field field-wide">
+          <label for="b-polygon">Polygon filter</label>
+          <input id="b-polygon" type="text" placeholder="lat,lng;lat,lng;lat,lng" />
+        </div>
+        <div class="field field-wide boundary-toggle">
+          <label class="check-label" for="b-use-view">
+            <input id="b-use-view" type="checkbox" checked />
+            <span>Use current map view as the bounding box</span>
+          </label>
+        </div>
+      </form>
+      <div id="boundaries-meta" class="result-meta" aria-live="polite"></div>
+      <div class="boundary-layout">
+        <div class="card map-card">
+          <div class="card-head">
+            <h3>Project boundary</h3>
+            <span class="tag tag-muted">_source geometry</span>
+          </div>
+          <div id="boundaries-map" class="boundary-map" role="application" aria-label="Project boundary map"></div>
+          <div id="boundaries-map-status" class="map-status" aria-live="polite">Map ready.</div>
+        </div>
+        <div class="boundary-results stack">
+          <div id="boundaries-results" class="stack" aria-live="polite"></div>
+          <div id="boundaries-query"></div>
+        </div>
+      </div>
+    </section>
   </main>
 
   <footer class="app-footer">
@@ -379,6 +446,7 @@
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="/static/app.js?v=4"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>

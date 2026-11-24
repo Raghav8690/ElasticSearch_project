@@ -12,7 +12,7 @@ class ApiError extends Error {
 }
 
 const API = {
-  async request(path, { method = "GET", params = null, body = null, timeoutMs = 20000 } = {}) {
+  async request(path, { method = "GET", params = null, body = null, timeoutMs = 20000, signal = null } = {}) {
     const url = new URL(path, window.location.origin);
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -20,7 +20,17 @@ const API = {
       });
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let abortedBySignal = false;
+    const abort = () => controller.abort();
+    const abortFromSignal = () => {
+      abortedBySignal = true;
+      abort();
+    };
+    if (signal) {
+      if (signal.aborted) abortFromSignal();
+      else signal.addEventListener("abort", abortFromSignal, { once: true });
+    }
+    const timer = setTimeout(abort, timeoutMs);
     try {
       const res = await fetch(url, {
         method,
@@ -52,15 +62,17 @@ const API = {
       return payload;
     } catch (error) {
       if (error.name === "AbortError") {
+        if (abortedBySignal) throw new ApiError("aborted", "Request superseded by a newer request.", 499);
         throw new ApiError("timeout", `Request timed out after ${Math.round(timeoutMs / 1000)}s`, 504);
       }
       throw error;
     } finally {
       clearTimeout(timer);
+      if (signal) signal.removeEventListener("abort", abortFromSignal);
     }
   },
-  get(path, params) {
-    return this.request(path, { params });
+  get(path, params, options) {
+    return this.request(path, Object.assign({}, options || {}, { params }));
   },
   post(path, body, params) {
     return this.request(path, { method: "POST", body, params });
@@ -1869,6 +1881,460 @@ async function runConsole() {
   }
 }
 
+const boundaryState = {
+  map: null,
+  featureLayer: null,
+  markerLayer: null,
+  filterLayer: null,
+  visibleItems: new Map(),
+  layersById: new Map(),
+  facetsLoaded: false,
+  initialized: false,
+  controller: null,
+  generation: 0,
+  moveTimer: null,
+  ignoreMoves: 0,
+  lastBounds: "",
+};
+
+function boundaryField(id) {
+  const el = document.getElementById(id);
+  return el ? el.value.trim() : "";
+}
+
+function setBoundaryStatus(text) {
+  const el = document.getElementById("boundaries-map-status");
+  if (el) el.textContent = text;
+}
+
+function ignoreBoundaryMove(action) {
+  boundaryState.ignoreMoves += 1;
+  try {
+    action();
+  } finally {
+    setTimeout(() => {
+      boundaryState.ignoreMoves = Math.max(0, boundaryState.ignoreMoves - 1);
+    }, 1500);
+  }
+}
+
+function initBoundaryMap() {
+  const el = document.getElementById("boundaries-map");
+  if (!el) return;
+  if (typeof L === "undefined") {
+    setBoundaryStatus("Leaflet failed to load from the CDN; map rendering is unavailable.");
+    return;
+  }
+  if (boundaryState.map) {
+    boundaryState.map.invalidateSize();
+    return;
+  }
+  const map = L.map(el, { preferCanvas: true }).setView([22.2587, 71.1924], 7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
+  boundaryState.featureLayer = L.layerGroup().addTo(map);
+  boundaryState.markerLayer = L.layerGroup().addTo(map);
+  boundaryState.filterLayer = L.layerGroup().addTo(map);
+  boundaryState.map = map;
+  map.on("zoomend", applyBoundaryStyle);
+  map.on("moveend", () => {
+    updateBoundaryBboxField();
+    if (boundaryState.ignoreMoves > 0) return;
+    const useView = document.getElementById("b-use-view");
+    if (!useView || !useView.checked) return;
+    clearTimeout(boundaryState.moveTimer);
+    boundaryState.moveTimer = setTimeout(() => loadBoundaries({ auto: true }), 350);
+  });
+  updateBoundaryBboxField();
+}
+
+async function loadBoundaryFacets() {
+  if (boundaryState.facetsLoaded) return;
+  boundaryState.facetsLoaded = true;
+  try {
+    const res = await API.get("/api/projects/facets");
+    const facets = (res.data && res.data.facets) || {};
+    fillSelect("b-district", facets.districts && facets.districts.buckets, "All districts");
+    fillSelect("b-taluka", facets.talukas && facets.talukas.buckets, "All talukas");
+    fillSelect("b-type", facets.project_types && facets.project_types.buckets, "All types");
+    fillSelect("b-status", facets.project_statuses && facets.project_statuses.buckets, "All statuses");
+  } catch {
+    setBoundaryStatus("Boundary facets unavailable; indexed filters still work as text fields where applicable.");
+  }
+}
+
+function updateBoundaryBboxField() {
+  if (!boundaryState.map) return;
+  const bounds = boundaryState.map.getBounds();
+  boundaryState.lastBounds = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
+    .map((value) => Number(value).toFixed(4))
+    .join(",");
+  const useView = document.getElementById("b-use-view");
+  const input = document.getElementById("b-bbox");
+  if (input && useView && useView.checked) input.value = boundaryState.lastBounds;
+}
+
+function clearBoundaryGraphics() {
+  [boundaryState.featureLayer, boundaryState.markerLayer, boundaryState.filterLayer].forEach((layer) => {
+    if (layer) layer.clearLayers();
+  });
+  boundaryState.visibleItems.clear();
+  boundaryState.layersById.clear();
+}
+
+function boundaryPolygonStyle(zoomed) {
+  return {
+    color: zoomed ? "#0369a1" : "#0284c7",
+    weight: zoomed ? 2.4 : 1.3,
+    opacity: 0.95,
+    fillColor: "#38bdf8",
+    fillOpacity: zoomed ? 0.24 : 0.12,
+  };
+}
+
+function applyBoundaryStyle() {
+  if (!boundaryState.map) return;
+  const zoomed = boundaryState.map.getZoom() >= 11;
+  if (boundaryState.featureLayer) {
+    boundaryState.featureLayer.eachLayer((layer) => layer.setStyle(boundaryPolygonStyle(zoomed)));
+  }
+  if (boundaryState.markerLayer) {
+    boundaryState.markerLayer.eachLayer((layer) => {
+      layer.setStyle({ color: "#92400e", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.85 });
+      if (typeof layer.setRadius === "function") layer.setRadius(zoomed ? 6 : 4);
+    });
+  }
+}
+
+function boundaryPopup(item) {
+  return h(
+    "div",
+    { class: "boundary-popup" },
+    h("div", { class: "popup-title", text: item.name || "Project" }),
+    h("div", { class: "popup-meta", text: `Project ID ${item.id == null ? "—" : item.id}` }),
+    h("div", { class: "popup-meta", text: `District ${item.district || "—"}` }),
+    h("div", { class: "popup-meta", text: `Taluka ${item.taluka || "—"}` }),
+    h("div", { class: "popup-meta", text: `Status ${item.project_status || "—"}` }),
+    h(
+      "button",
+      {
+        class: "btn btn-ghost mt-10",
+        type: "button",
+        onclick: () => openDetail(item.id),
+      },
+      "Open project detail"
+    )
+  );
+}
+
+function renderBoundaryGraphics(data) {
+  const items = (data.features || []).concat(data.markers || []);
+  items.forEach((item) => {
+    const key = String(item.id);
+    boundaryState.visibleItems.set(key, item);
+    if (boundaryState.layersById.has(key)) return;
+    const center = Array.isArray(item.center) ? item.center : [22.2587, 71.1924];
+    const ring = Array.isArray(item.ring) ? item.ring : [];
+    const zoomed = boundaryState.map.getZoom() >= 11;
+    let layer;
+    if (ring.length >= 3) {
+      layer = L.polygon(ring, boundaryPolygonStyle(zoomed));
+    } else {
+      layer = L.circleMarker(center, {
+        radius: 4,
+        color: "#92400e",
+        weight: 2,
+        fillColor: "#f59e0b",
+        fillOpacity: 0.85,
+      });
+    }
+    layer.bindPopup(boundaryPopup(item));
+    layer.addTo(ring.length >= 3 ? boundaryState.featureLayer : boundaryState.markerLayer);
+    boundaryState.layersById.set(key, layer);
+  });
+}
+
+function renderBoundaryOverlay(params) {
+  if (!boundaryState.filterLayer) return;
+  boundaryState.filterLayer.clearLayers();
+  if (params.bbox) {
+    const values = params.bbox.split(",").map(Number);
+    if (values.length === 4 && values.every(Number.isFinite)) {
+      L.rectangle([[values[1], values[0]], [values[3], values[2]]], {
+        color: "#7c3aed",
+        weight: 2,
+        dashArray: "6 5",
+        fillOpacity: 0.03,
+      }).addTo(boundaryState.filterLayer);
+    }
+  }
+  if (params.lat && params.lon && params.distance_km) {
+    L.circle([Number(params.lat), Number(params.lon)], {
+      radius: Number(params.distance_km) * 1000,
+      color: "#7c3aed",
+      weight: 2,
+      dashArray: "6 5",
+      fillColor: "#a78bfa",
+      fillOpacity: 0.05,
+    }).addTo(boundaryState.filterLayer);
+  }
+  if (params.polygon) {
+    const ring = params.polygon
+      .split(";")
+      .map((pair) => pair.split(",").map(Number))
+      .filter((point) => point.length === 2 && point.every(Number.isFinite));
+    if (ring.length >= 3) {
+      L.polygon(ring, {
+        color: "#7c3aed",
+        weight: 2,
+        dashArray: "6 5",
+        fillOpacity: 0.04,
+      }).addTo(boundaryState.filterLayer);
+    }
+  }
+}
+
+function focusBoundary(item) {
+  if (!boundaryState.map) return;
+  const center = Array.isArray(item.center) ? item.center : [22.2587, 71.1924];
+  ignoreBoundaryMove(() => boundaryState.map.setView(center, Math.max(boundaryState.map.getZoom(), 14)));
+  const layer = boundaryState.layersById.get(String(item.id));
+  if (layer) layer.openPopup();
+}
+
+function boundaryTable(items) {
+  if (!items.length) {
+    return h("div", { class: "placeholder", text: "No project boundaries matched these filters." });
+  }
+  const rows = items.slice(0, 250).map((item) =>
+    h(
+      "tr",
+      { class: "row-click", onclick: () => focusBoundary(item) },
+      h("td", { class: "mono", text: String(item.id ?? "—") }),
+      h("td", { class: "truncate", title: String(item.name || "—"), text: item.name || "—" }),
+      h("td", { text: item.district || "—" }),
+      h("td", { text: item.taluka || "—" }),
+      h("td", { text: item.project_type || "—" }),
+      h("td", { text: item.project_status || "—" })
+    )
+  );
+  return h(
+    "div",
+    { class: "stack" },
+    h(
+      "div",
+      { class: "table-wrap" },
+      h(
+        "table",
+        { class: "data-table compact" },
+        h(
+          "thead",
+          {},
+          h(
+            "tr",
+            {},
+            ...["ID", "Project", "District", "Taluka", "Type", "Status"].map((column) =>
+              h("th", { text: column })
+            )
+          )
+        ),
+        h("tbody", {}, ...rows)
+      )
+    ),
+    items.length > 250
+      ? h("div", { class: "muted small mt-8", text: `Showing the first 250 of ${items.length.toLocaleString()} visible boundaries. Zoom to narrow the view.` })
+      : null
+  );
+}
+
+function validateBoundaryInputs() {
+  const lat = boundaryField("b-lat");
+  const lon = boundaryField("b-lon");
+  const distance = boundaryField("b-distance");
+  if ((lat || lon || distance) && !(lat && lon && distance)) {
+    setBoundaryStatus("Radius filtering requires latitude, longitude, and distance.");
+    return false;
+  }
+  const size = Number(boundaryField("b-size") || "2000");
+  if (!Number.isInteger(size) || size < 1 || size > 10000) {
+    setBoundaryStatus("Batch size must be an integer between 1 and 10000.");
+    return false;
+  }
+  return true;
+}
+
+function collectBoundaryParams(after) {
+  const params = {};
+  const fields = {
+    q: "b-q",
+    district: "b-district",
+    taluka: "b-taluka",
+    project_type: "b-type",
+    project_status: "b-status",
+    reg_no: "b-reg-no",
+  };
+  Object.entries(fields).forEach(([key, id]) => {
+    const value = boundaryField(id);
+    if (value) params[key] = value;
+  });
+  const useView = document.getElementById("b-use-view");
+  params.bbox = useView && useView.checked ? boundaryState.lastBounds : boundaryField("b-bbox");
+  const lat = boundaryField("b-lat");
+  const lon = boundaryField("b-lon");
+  const distance = boundaryField("b-distance");
+  if (lat && lon && distance) {
+    params.lat = lat;
+    params.lon = lon;
+    params.distance_km = distance;
+  }
+  const polygon = boundaryField("b-polygon");
+  if (polygon) params.polygon = polygon;
+  params.size = boundaryField("b-size") || "2000";
+  if (after !== null && after !== undefined) params.after = String(after);
+  return params;
+}
+
+function renderBoundaryMeta(data, meta, pages) {
+  const queryUsed = (meta && meta.query_used) || {};
+  const skipped = (data && data.skipped) || {};
+  const metaEl = document.getElementById("boundaries-meta");
+  const queryEl = document.getElementById("boundaries-query");
+  const items = Array.from(boundaryState.visibleItems.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+  if (metaEl) {
+    metaEl.replaceChildren(
+      h("span", {}, h("strong", { text: items.length.toLocaleString() }), " visible"),
+      h("span", { text: `scanned ${Number(data.loaded || 0).toLocaleString()} of ${Number(meta.total || 0).toLocaleString()}` }),
+      h("span", { text: `skipped ${Number(skipped.degenerate || 0).toLocaleString()} degenerate / ${Number(skipped.unparseable || 0).toLocaleString()} unparseable` }),
+      h("span", { text: `batches ${pages}` }),
+      h("span", { text: queryUsed.cache_hit ? "cache hit" : "ES scan" }),
+      h("span", {}, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "—")),
+      h("span", {}, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "—"))
+    );
+  }
+  if (queryEl) queryEl.replaceChildren(queryDetails(queryUsed, "Boundary query"));
+}
+
+function renderBoundaryResultsTable() {
+  const results = document.getElementById("boundaries-results");
+  if (!results) return;
+  const items = Array.from(boundaryState.visibleItems.values()).sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+  results.replaceChildren(boundaryTable(items));
+}
+
+async function loadBoundaries(options = {}) {
+  initBoundaryMap();
+  if (!boundaryState.map) return;
+  if (!validateBoundaryInputs()) return;
+  if (boundaryState.controller) boundaryState.controller.abort();
+  const controller = new AbortController();
+  boundaryState.controller = controller;
+  const generation = ++boundaryState.generation;
+  clearTimeout(boundaryState.moveTimer);
+  clearBoundaryGraphics();
+  setBoundaryStatus("Loading boundaries…");
+  const results = document.getElementById("boundaries-results");
+  if (results) results.replaceChildren(loading("Loading boundaries…"));
+  let after = null;
+  let pages = 0;
+  let lastData = null;
+  let lastMeta = null;
+  let previousAfter = null;
+  const maxPages = 20;
+  try {
+    do {
+      const params = collectBoundaryParams(after);
+      renderBoundaryOverlay(params);
+      const res = await API.get("/api/projects/boundaries", params, { signal: controller.signal });
+      if (generation !== boundaryState.generation) return;
+      lastData = res.data || {};
+      lastMeta = res.meta || {};
+      renderBoundaryGraphics(lastData);
+      renderBoundaryMeta(lastData, lastMeta, pages + 1);
+      pages += 1;
+      after = lastData.complete ? null : lastData.next_after;
+      if (after === null || after === undefined) break;
+      if (String(after) === String(previousAfter)) break;
+      previousAfter = after;
+    } while (pages < maxPages);
+    if (!lastData || !lastData.complete) {
+      setBoundaryStatus(`Loaded ${pages} batches; narrow the filters to finish the scan.`);
+    } else {
+      setBoundaryStatus(`Rendered ${boundaryState.visibleItems.size.toLocaleString()} project boundaries.`);
+    }
+    renderBoundaryResultsTable();
+  } catch (err) {
+    if (err && err.code === "aborted") return;
+    if (results) results.replaceChildren(errorCard("Boundary load failed", err));
+    setBoundaryStatus("Boundary load failed. Check the filters and retry.");
+  } finally {
+    if (generation === boundaryState.generation) boundaryState.controller = null;
+  }
+}
+
+function zoomToBoundaries() {
+  if (!boundaryState.map) return;
+  const layers = Array.from(boundaryState.layersById.values());
+  if (!layers.length) {
+    setBoundaryStatus("No boundaries loaded to zoom to.");
+    return;
+  }
+  const group = L.featureGroup(layers);
+  ignoreBoundaryMove(() => boundaryState.map.fitBounds(group.getBounds(), { padding: [24, 24], maxZoom: 16 }));
+}
+
+async function resetBoundaries() {
+  if (boundaryState.controller) boundaryState.controller.abort();
+  boundaryState.generation += 1;
+  boundaryState.controller = null;
+  const form = document.getElementById("boundaries-form");
+  if (form) form.reset();
+  const size = document.getElementById("b-size");
+  if (size) size.value = "2000";
+  const useView = document.getElementById("b-use-view");
+  if (useView) useView.checked = true;
+  updateBoundaryBboxField();
+  clearBoundaryGraphics();
+  const results = document.getElementById("boundaries-results");
+  const meta = document.getElementById("boundaries-meta");
+  const query = document.getElementById("boundaries-query");
+  if (results) results.replaceChildren(h("div", { class: "placeholder", text: "Choose filters, then load boundaries." }));
+  if (meta) meta.replaceChildren();
+  if (query) query.replaceChildren();
+  setBoundaryStatus("Filters reset.");
+  await loadBoundaries();
+}
+
+function ensureBoundaries() {
+  initBoundaryMap();
+  loadBoundaryFacets();
+  if (boundaryState.map) setTimeout(() => boundaryState.map.invalidateSize(), 0);
+}
+
+function initBoundaries() {
+  const form = document.getElementById("boundaries-form");
+  const load = document.getElementById("boundaries-load");
+  const reset = document.getElementById("boundaries-reset");
+  const zoom = document.getElementById("boundaries-zoom");
+  const useView = document.getElementById("b-use-view");
+  if (form) {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      withBusy(load, "Loading…", () => loadBoundaries());
+    });
+  }
+  if (load) load.addEventListener("click", () => withBusy(load, "Loading…", () => loadBoundaries()));
+  if (reset) reset.addEventListener("click", () => withBusy(reset, "Resetting…", resetBoundaries));
+  if (zoom) zoom.addEventListener("click", zoomToBoundaries);
+  if (useView) {
+    useView.addEventListener("change", () => {
+      updateBoundaryBboxField();
+      if (useView.checked) loadBoundaries({ auto: true });
+    });
+  }
+}
+
 /* ---------- bootstrap ---------- */
 function initProjects() {
   const searchBtn = document.getElementById("projects-search");
@@ -1919,6 +2385,7 @@ function initTabs() {
     if (name === "pagination") ensurePagination();
     if (name === "mapping") loadMapping();
     if (name === "ops") loadOps();
+    if (name === "boundaries") ensureBoundaries();
   };
   tabs.forEach((tab, index) => {
     tab.tabIndex = tab.classList.contains("is-active") ? 0 : -1;
@@ -1940,6 +2407,7 @@ function initTabs() {
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initProjects();
+  initBoundaries();
   const refresh = document.getElementById("refresh-dashboard");
   if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "Refreshing…", () => loadDashboard(true)));
   const analyticsRefresh = document.getElementById("analytics-refresh");
