@@ -150,7 +150,7 @@ Convert previously hard-coded supporting hex values into `:root` tokens so every
 
 Elements:
 
-- `.brand-mark`: Blue gradient square (`--accent-gradient`) with bold white `GR` monogram.
+- `.brand-logo`: Header image (`/static/logo.png`) with a subtle blue drop shadow; also used as the browser favicon.
 - `.brand-text h1`: Product title (`Gujrat RERA Explorer`).
 - `.brand-sub`: One-line product description.
 - `.pill-host`: Elasticsearch host chip (`--pill-bg`, `--pill-border`, `--pill-text`).
@@ -361,7 +361,7 @@ Always render the loading state before async work begins and replace it cleanly 
 - **Purpose**: Show project boundary rings and teach read-only geometry filtering with the same query-visible pattern as other tabs.
 - **Data source**: `Project Profile.Map Location` from `_source`; no `geo_point`, no `geo_shape`, no index writes, no API key.
 - **Elements**: Read-only note; district/taluka/type/status/`q` filters; `bbox` input; radius (`lat`, `lon`, `distance_km`) input; polygon input; `Load Boundaries` button; Leaflet map container; result table; skipped-ring count; query-used disclosure.
-- **Rendering**: Leaflet + OpenStreetMap tiles via CDN, `preferCanvas: true`, auto-closed polygons, centroid markers for degenerate rings, stronger stroke/fill at higher zoom, click popup with project detail link.
+- **Rendering**: Leaflet + OpenStreetMap tiles via CDN, `preferCanvas: true`, auto-closed polygons, custom `/static/centroid-pin.png` icons for degenerate-ring centroids and the focused result, stronger stroke/fill at higher zoom, click popup with project detail link.
 - **Interaction**: Filter changes fetch one viewport batch; `moveend` re-renders cached rings without another ES call; stale requests use `AbortController`; `aria-live` reports visible/cached/skipped counts.
 - **Visual Priority**: (1) Read-only note + filters → (2) Map → (3) Result counts → (4) Result table → (5) Query used.
 

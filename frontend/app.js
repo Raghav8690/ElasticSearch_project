@@ -2057,6 +2057,19 @@ function clearBoundaryGraphics() {
   boundaryState.focusMarker = null;
 }
 
+function getCentroidIcon(isFocus = false) {
+  const size = isFocus ? [36, 52] : [28, 40];
+  const anchor = isFocus ? [18, 52] : [14, 40];
+  const popupAnchor = isFocus ? [0, -50] : [0, -38];
+  return L.icon({
+    iconUrl: "/static/centroid-pin.png?v=9",
+    iconSize: size,
+    iconAnchor: anchor,
+    popupAnchor: popupAnchor,
+    className: isFocus ? "focus-pin-marker" : "centroid-pin-marker",
+  });
+}
+
 function boundaryPolygonStyle(zoomed) {
   return {
     color: zoomed ? "#0369a1" : "#0284c7",
@@ -2075,7 +2088,9 @@ function applyBoundaryStyle() {
   }
   if (boundaryState.markerLayer) {
     boundaryState.markerLayer.eachLayer((layer) => {
-      layer.setStyle({ color: "#92400e", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.85 });
+      if (typeof layer.setStyle === "function") {
+        layer.setStyle({ color: "#92400e", weight: 2, fillColor: "#f59e0b", fillOpacity: 0.85 });
+      }
       if (typeof layer.setRadius === "function") layer.setRadius(zoomed ? 6 : 4);
     });
   }
@@ -2118,12 +2133,8 @@ function renderBoundaryGraphics(data) {
     if (ring.length >= 3) {
       layer = L.polygon(ring, boundaryPolygonStyle(zoomed));
     } else {
-      layer = L.circleMarker(center, {
-        radius: 4,
-        color: "#92400e",
-        weight: 2,
-        fillColor: "#f59e0b",
-        fillOpacity: 0.85,
+      layer = L.marker(center, {
+        icon: getCentroidIcon(false),
       });
     }
     layer.bindPopup(boundaryPopup(item));
@@ -2184,12 +2195,9 @@ function focusBoundary(item, options = {}) {
 
   if (boundaryState.focusLayer) {
     boundaryState.focusLayer.clearLayers();
-    boundaryState.focusMarker = L.circleMarker(center, {
-      radius: 10,
-      color: "#7c3aed",
-      weight: 3,
-      fillColor: "#c084fc",
-      fillOpacity: 0.85,
+    boundaryState.focusMarker = L.marker(center, {
+      icon: getCentroidIcon(true),
+      zIndexOffset: 1000,
     }).addTo(boundaryState.focusLayer);
     boundaryState.focusMarker.bindPopup(boundaryPopup(item));
     if (options.openPopup !== false) {
