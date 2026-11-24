@@ -9,7 +9,7 @@ def anyio_backend():
 
 
 @pytest.mark.asyncio
-async def test_all_25_routes_and_root():
+async def test_all_26_routes_and_root():
     async with lifespan(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -32,7 +32,9 @@ async def test_all_25_routes_and_root():
             # 4. Capabilities
             r = await client.get("/api/capabilities")
             assert r.status_code == 200
-            assert "capabilities" in r.json()
+            features = r.json()["capabilities"]["features"]
+            assert features["boundary_map"]["available"] is True
+            assert features["native_geo_dsl"]["available"] is False
 
             # 5. Indices
             r = await client.get("/api/indices")
@@ -86,6 +88,17 @@ async def test_all_25_routes_and_root():
             r = await client.get("/api/projects/facets")
             assert r.status_code == 200
             assert "facets" in r.json()["data"]
+
+            # 11b. Boundaries (Check route precedence before /projects/{project_id})
+            r = await client.get(
+                "/api/projects/boundaries",
+                params={"district": "Ahmedabad", "size": 3},
+            )
+            assert r.status_code == 200
+            boundary_data = r.json()["data"]
+            assert "features" in boundary_data
+            assert "markers" in boundary_data
+            assert boundary_data["capabilities"]["native_geo_dsl"] is False
 
             # 12. Detail
             r = await client.get("/api/projects/573")
@@ -202,3 +215,13 @@ async def test_route_validation_edge_cases():
             assert r.status_code == 400
             assert r.json()["error"]["code"] == "invalid_request"
             assert "script" in r.json()["error"]["message"]
+
+            # Invalid boundary bbox
+            r = await client.get("/api/projects/boundaries", params={"bbox": "73,23,72,22"})
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
+            # Invalid boundary polygon
+            r = await client.get("/api/projects/boundaries", params={"polygon": "22,72;22,72.1"})
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"

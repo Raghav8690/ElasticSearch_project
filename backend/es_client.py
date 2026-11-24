@@ -141,6 +141,17 @@ def compute_capabilities(
             "One or more enabled:false section objects are missing from the mapping.",
             list(DISABLED_OBJECTS),
         ),
+        "boundary_map": feature(
+            all(is_type(f, "keyword") for f in ("district", "taluka", "project_type", "project_status"))
+            and bool(disabled_present.get("Project Profile")),
+            "Indexed filters or Project Profile.Map Location source data are missing.",
+            ["district", "taluka", "project_type", "project_status", "Project Profile"],
+        ),
+        "native_geo_dsl": feature(
+            False,
+            "No geo_point or geo_shape fields are indexed; read-only mode forbids mapping changes.",
+            [],
+        ),
         "analytics": feature(
             all(is_type(f, "keyword") for f in ("district", "taluka", "project_type", "project_status")),
             "Aggregation keyword fields are missing.",

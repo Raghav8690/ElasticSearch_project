@@ -1,6 +1,7 @@
 import pytest
 from backend.queries import (
     address_match_score,
+    build_boundary_query,
     build_project_search,
     build_suggest,
     build_facets,
@@ -358,3 +359,31 @@ def test_build_project_search_promoter_reg_no_and_doc_range():
 
     # explicit sort overrides default relevance/projectId sort
     assert body["sort"] == [{"project_name.keyword": "asc"}, {"projectId": "asc"}]
+
+
+def test_build_boundary_query_uses_only_indexed_filters_and_source_path():
+    body = build_boundary_query(
+        q="plot",
+        district="Ahmedabad",
+        project_type="Plotted Development",
+        size=500,
+        after=573,
+    )
+    assert body["size"] == 500
+    assert body["search_after"] == [573]
+    assert body["sort"] == [{"projectId": "asc"}]
+    assert "Project Profile.Map Location" in body["_source"]
+    assert "Project Profile" not in body["query"]
+    assert "geo_distance" not in str(body)
+    assert "runtime_mappings" not in str(body)
+    assert body["query"]["bool"]["filter"]
+    assert body["query"]["bool"]["should"]
+
+
+def test_build_boundary_query_rejects_bad_size_and_after():
+    with pytest.raises(AppError):
+        build_boundary_query(size=0)
+    with pytest.raises(AppError):
+        build_boundary_query(size=10001)
+    with pytest.raises(AppError):
+        build_boundary_query(after=-1)

@@ -13,16 +13,30 @@ from typing import Any
 
 from .schemas import CORE_FIELDS, DISABLED_OBJECTS, AppError
 
-# Sentinel markers used instead of raw <em> tags. The browser splits on these
-# and builds <em> DOM nodes, so no Elasticsearch text is ever injected as HTML.
+# Sentinel markers used instead of raw HTML tags. The browser splits on these
+# and builds <mark> DOM nodes, so no Elasticsearch text is ever injected as HTML.
 HIGHLIGHT_PRE = "[[HL]]"
 HIGHLIGHT_POST = "[[/HL]]"
 
 MAX_SIZE = 100
 MAX_RESULT_WINDOW = 10_000
 MAX_EXPORT_LIMIT = 100_000
+MAX_BOUNDARY_SIZE = 10_000
 EXPORT_BATCH = 100
 PAGE_SOURCE = ["projectId", "project_name", "district", "project_type", "project_status", "price"]
+BOUNDARY_SOURCE_PATH = "Project Profile.Map Location"
+BOUNDARY_SOURCE = [
+    "projectId",
+    "project_name",
+    "promoter_name",
+    "district",
+    "taluka",
+    "project_type",
+    "project_status",
+    "reg_no",
+    "page_url",
+    BOUNDARY_SOURCE_PATH,
+]
 EXPORT_COLUMNS = [
     "projectId",
     "project_name",
@@ -386,6 +400,59 @@ def build_project_search(
             "fields": {"project_name": {}, "promoter_name": {}},
         },
     }
+
+
+def build_boundary_query(
+    *,
+    q: str | None = None,
+    district: str | None = None,
+    taluka: str | None = None,
+    project_type: str | None = None,
+    project_status: str | None = None,
+    promoter: str | None = None,
+    reg_no: str | None = None,
+    size: int = 1000,
+    after: int | None = None,
+) -> dict[str, Any]:
+    if not isinstance(size, int) or size < 1 or size > MAX_BOUNDARY_SIZE:
+        raise _invalid(f"size must be between 1 and {MAX_BOUNDARY_SIZE}.")
+    if after is not None and (not isinstance(after, int) or isinstance(after, bool) or after < 0):
+        raise _invalid("after must be a non-negative projectId.")
+
+    filters: list[dict[str, Any]] = []
+    if district:
+        filters.append(_text_filter("district", district))
+    if taluka:
+        filters.append(_text_filter("taluka", taluka))
+    if project_type:
+        filters.append(_text_filter("project_type", project_type))
+    if project_status:
+        filters.append(_text_filter("project_status", project_status))
+    if promoter:
+        filters.append(_text_filter("promoter_name.keyword", promoter))
+    if reg_no:
+        filters.append(_text_filter("reg_no", reg_no))
+
+    bool_query: dict[str, Any] = {"filter": filters}
+    has_query = bool(q and q.strip())
+    if has_query:
+        bool_query.update(_build_relevance_clause(q or ""))
+    query: dict[str, Any]
+    if filters or has_query:
+        query = {"bool": bool_query}
+    else:
+        query = {"match_all": {}}
+
+    body: dict[str, Any] = {
+        "size": size,
+        "track_total_hits": True,
+        "_source": list(BOUNDARY_SOURCE),
+        "query": query,
+        "sort": [{"projectId": "asc"}],
+    }
+    if after is not None:
+        body["search_after"] = [after]
+    return body
 
 
 def build_suggest(q: str, size: int = 8) -> dict[str, Any]:

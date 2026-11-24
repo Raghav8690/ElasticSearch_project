@@ -6,6 +6,7 @@ import csv
 import io
 import json
 import time
+from collections import OrderedDict
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -15,6 +16,7 @@ from elasticsearch import BadRequestError, NotFoundError
 
 from .config import settings
 from .es_client import CAT_INDEX_COLUMNS, ESManager, _safe_reason, flatten_mapping
+from .geometry import boundary_item, matches_geometry, parse_bbox, parse_polygon, parse_radius
 from .queries import (
     ADDRESS_SOURCE_PATH,
     EXPORT_BATCH,
@@ -23,6 +25,7 @@ from .queries import (
     address_match_score,
     build_analytics_dates,
     build_analytics_overview,
+    build_boundary_query,
     build_facets,
     build_page,
     build_project_id_query,
@@ -44,6 +47,11 @@ ADDRESS_CACHE_TTL_SECONDS = 3600
 ADDRESS_SCAN_BATCH = 500
 _address_cache: dict[str, Any] = {"loaded_at": 0.0, "addresses": {}, "error": None}
 _address_cache_lock = asyncio.Lock()
+
+BOUNDARY_CACHE_TTL_SECONDS = 900
+BOUNDARY_CACHE_MAX_ENTRIES = 24
+_boundary_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
+_boundary_cache_lock = asyncio.Lock()
 
 
 # -- helpers ---------------------------------------------------------------
@@ -148,6 +156,81 @@ async def _fetch_candidate_hits(es: ESManager, ids: list[int], source_fields: li
         )
     ).body
     return (resp.get("hits") or {}).get("hits") or []
+
+
+def _boundary_cache_key(filters: dict[str, str | None]) -> str:
+    return json.dumps(filters, sort_keys=True, separators=(",", ":"))
+
+
+def _get_boundary_cache(key: str) -> dict[str, Any] | None:
+    entry = _boundary_cache.get(key)
+    if entry is None:
+        return None
+    if time.monotonic() - float(entry["loaded_at"]) >= BOUNDARY_CACHE_TTL_SECONDS:
+        _boundary_cache.pop(key, None)
+        return None
+    _boundary_cache.move_to_end(key)
+    return entry
+
+
+def _new_boundary_cache() -> dict[str, Any]:
+    return {
+        "loaded_at": time.monotonic(),
+        "features": {},
+        "markers": {},
+        "skipped": {"degenerate": 0, "unparseable": 0},
+        "next_after": None,
+        "complete": False,
+        "total": None,
+        "es_took_ms": None,
+        "last_body": None,
+    }
+
+
+async def _scan_boundary_batch(
+    es: ESManager,
+    body: dict[str, Any],
+    entry: dict[str, Any],
+) -> tuple[int | None, int | None, int | None]:
+    resp = (await es.client.search(index=settings.index_rera, **body)).body
+    hits = (resp.get("hits") or {}).get("hits") or []
+    for hit in hits:
+        source = hit.get("_source") or {}
+        feature, marker, reason = boundary_item(source)
+        project_id = source.get("projectId") or hit.get("_id")
+        key = str(project_id)
+        if feature is not None:
+            entry["features"][key] = feature
+        elif marker is not None:
+            entry["markers"][key] = marker
+        else:
+            counter = "degenerate" if reason == "degenerate" else "unparseable"
+            entry["skipped"][counter] = int(entry["skipped"].get(counter) or 0) + 1
+    total = ((resp.get("hits") or {}).get("total") or {}).get("value")
+    if total is not None:
+        entry["total"] = total
+    sort_values = hits[-1].get("sort") if hits else None
+    next_after = _as_int(sort_values[0]) if sort_values else None
+    entry["next_after"] = next_after
+    entry["complete"] = not hits or next_after is None
+    entry["es_took_ms"] = resp.get("took")
+    entry["last_body"] = body
+    entry["loaded_at"] = time.monotonic()
+    return total, next_after, resp.get("took")
+
+
+def _boundary_matches(item: dict[str, Any], geometry: dict[str, Any]) -> bool:
+    center = item.get("center") or [0.0, 0.0]
+    bounds = item.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+    return bool(
+        matches_geometry(
+            (float(center[0]), float(center[1])),
+            (float(bounds[0]), float(bounds[1]), float(bounds[2]), float(bounds[3])),
+            bbox=geometry["bbox"],
+            radius=geometry["radius"],
+            polygon=geometry["polygon"],
+        )
+    )
 
 
 # -- discovery -------------------------------------------------------------
@@ -1063,6 +1146,90 @@ async def console_query(
         es_took_ms=resp.get("took"),
         wall_ms=wall,
         query_used={"method": "POST", "path": f"/{index}/_search", "body": body},
+    )
+
+
+@router.get("/projects/boundaries")
+async def project_boundaries(request: Request, es: ESManager = Depends(get_es)) -> dict[str, Any]:
+    start = time.perf_counter()
+    params = request.query_params
+    filters: dict[str, str | None] = {
+        "q": params.get("q") or None,
+        "district": params.get("district") or None,
+        "taluka": params.get("taluka") or None,
+        "project_type": params.get("project_type") or None,
+        "project_status": params.get("project_status") or None,
+        "promoter": params.get("promoter") or None,
+        "reg_no": params.get("reg_no") or None,
+    }
+
+    size = _as_int(params.get("size")) if params.get("size") is not None else 1000
+    if size is None:
+        raise AppError("invalid_request", "size must be an integer.")
+    after_raw = params.get("after")
+    after = _as_int(after_raw) if after_raw is not None else None
+    if after_raw is not None and after is None:
+        raise AppError("invalid_request", "after must be a non-negative projectId.")
+
+    geometry = {
+        "bbox": parse_bbox(params.get("bbox")),
+        "radius": parse_radius(params.get("lat"), params.get("lon"), params.get("distance_km")),
+        "polygon": parse_polygon(params.get("polygon")),
+    }
+    body = build_boundary_query(**filters, size=size, after=after)
+    key = _boundary_cache_key(filters)
+
+    async with _boundary_cache_lock:
+        entry = _get_boundary_cache(key)
+        cache_hit = entry is not None and after is None and bool(entry["features"] or entry["markers"])
+        if entry is None:
+            entry = _new_boundary_cache()
+            _boundary_cache[key] = entry
+            if len(_boundary_cache) > BOUNDARY_CACHE_MAX_ENTRIES:
+                _boundary_cache.popitem(last=False)
+        if not cache_hit:
+            total, next_after, es_took = await _scan_boundary_batch(es, body, entry)
+        else:
+            total = entry["total"]
+            next_after = entry["next_after"]
+            es_took = entry["es_took_ms"]
+
+        features = [item for item in entry["features"].values() if _boundary_matches(item, geometry)]
+        markers = [item for item in entry["markers"].values() if _boundary_matches(item, geometry)]
+        features.sort(key=lambda item: item.get("id") or 0)
+        markers.sort(key=lambda item: item.get("id") or 0)
+        skipped = dict(entry["skipped"])
+        complete = bool(entry["complete"])
+        loaded = len(entry["features"]) + len(entry["markers"])
+
+    data = {
+        "features": features,
+        "markers": markers,
+        "skipped": skipped,
+        "capabilities": {"native_geo_dsl": False, "source_boundaries": True},
+        "next_after": next_after,
+        "complete": complete,
+        "loaded": loaded,
+    }
+    return envelope(
+        data,
+        index=settings.index_rera,
+        total=total,
+        returned=len(features) + len(markers),
+        es_took_ms=es_took,
+        wall_ms=now_ms(start),
+        query_used={
+            "method": "POST",
+            "path": f"/{settings.index_rera}/_search",
+            "body": entry["last_body"] if cache_hit else body,
+            "cache_hit": cache_hit,
+            "geometry_filter": {
+                "bbox": list(geometry["bbox"]) if geometry["bbox"] else None,
+                "radius": [list(geometry["radius"][0]), geometry["radius"][1]] if geometry["radius"] else None,
+                "polygon_points": len(geometry["polygon"]) if geometry["polygon"] else None,
+            },
+            "note": "Boundaries are read from _source; no geo DSL or index writes are used.",
+        },
     )
 
 
