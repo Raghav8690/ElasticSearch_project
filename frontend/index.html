@@ -6,7 +6,7 @@
   <meta name="description" content="Read-only Elasticsearch explorer for the Gujarat RERA dataset." />
   <title>Gujrat RERA Explorer</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=5" />
+  <link rel="stylesheet" href="/static/styles.css?v=7" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -21,7 +21,7 @@
       <div class="header-meta">
         <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
         <span class="pill pill-status is-unknown" id="cluster-pill" aria-live="polite">
-          <span class="dot"></span><span class="pill-label">checking…</span>
+          <span class="dot"></span><span class="pill-label">checkingâ€¦</span>
         </span>
       </div>
     </header>
@@ -36,7 +36,7 @@
       <button class="tab" id="tab-mapping" role="tab" aria-selected="false" aria-controls="panel-mapping" data-tab="mapping" tabindex="-1">Mapping &amp; Indices</button>
       <button class="tab" id="tab-ops" role="tab" aria-selected="false" aria-controls="panel-ops" data-tab="ops" tabindex="-1">Ops</button>
       <button class="tab" id="tab-console" role="tab" aria-selected="false" aria-controls="panel-console" data-tab="console" tabindex="-1">Console</button>
-      <button class="tab" id="tab-boundaries" role="tab" aria-selected="false" aria-controls="panel-boundaries" data-tab="boundaries" tabindex="-1">Map / Boundaries</button>
+      <button class="tab" id="tab-boundaries" role="tab" aria-selected="false" aria-controls="panel-boundaries" data-tab="boundaries" tabindex="-1">Map </button>
     </nav>
   </div>
 
@@ -45,12 +45,12 @@
       <div class="panel-head">
         <div>
           <h2>Dashboard</h2>
-          <p>Live cluster and index facts, verified at runtime — never hard-coded.</p>
+          <p>Live cluster and index facts, verified at runtime â€” never hard-coded.</p>
         </div>
         <button class="btn" type="button" id="refresh-dashboard">Refresh</button>
       </div>
       <div id="dashboard-body" class="stack">
-        <div class="loading">Loading cluster facts…</div>
+        <div class="loading">Loading cluster factsâ€¦</div>
       </div>
     </section>
 
@@ -68,14 +68,14 @@
       <div class="projects-layout">
         <aside class="facets">
           <div class="facets-head">Facets</div>
-          <div id="facets-body"><div class="facets-loading">Loading facets…</div></div>
+          <div id="facets-body"><div class="facets-loading">Loading facetsâ€¦</div></div>
         </aside>
         <div class="projects-main">
           <form class="filters" id="projects-form">
             <div class="field field-wide">
               <label for="q">Search project / promoter</label>
               <div class="suggest-wrap">
-                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
+                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalikâ€¦" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
                 <div class="suggest-box" id="suggest-box" role="listbox" hidden></div>
               </div>
             </div>
@@ -104,12 +104,12 @@
               <label for="f-sort">Sort</label>
               <select id="f-sort">
                 <option value="">projectId (asc)</option>
-                <option value="project_name.keyword:asc">project name ↑</option>
-                <option value="project_name.keyword:desc">project name ↓</option>
-                <option value="start_date:desc">start date ↓</option>
-                <option value="start_date:asc">start date ↑</option>
-                <option value="scrape_status.documents:desc">documents ↓</option>
-                <option value="district:asc">district ↑</option>
+                <option value="project_name.keyword:asc">project name â†‘</option>
+                <option value="project_name.keyword:desc">project name â†“</option>
+                <option value="start_date:desc">start date â†“</option>
+                <option value="start_date:asc">start date â†‘</option>
+                <option value="scrape_status.documents:desc">documents â†“</option>
+                <option value="district:asc">district â†‘</option>
               </select>
             </div>
             <div class="field">
@@ -117,6 +117,9 @@
               <select id="f-size"><option>20</option><option>50</option><option>100</option></select>
             </div>
           </form>
+      <div class="boundary-actions">
+        <button type="button" id="b-show-nearby" class="btn btn-nearby" disabled>Show nearby</button>
+      </div>
           <div class="result-meta" id="projects-meta" aria-live="polite"></div>
           <div id="projects-results" class="stack" aria-live="polite"></div>
           <div id="projects-query"></div>
@@ -179,7 +182,7 @@
           <p>
             Dates are stored as <code>dd-MM-yyyy</code> keyword strings with an explicit
             <code>format</code> on the date fields. A value that does not match the pattern is not
-            silently coerced — date range queries and histograms simply exclude it. Treat the
+            silently coerced â€” date range queries and histograms simply exclude it. Treat the
             histograms as coverage of well-formed dates, not a completeness guarantee.
           </p>
         </div>
@@ -378,7 +381,7 @@
     <section class="panel" id="panel-boundaries" role="tabpanel" aria-labelledby="tab-boundaries" data-panel="boundaries">
       <div class="panel-head">
         <div>
-          <h2>Map / Boundaries</h2>
+          <h2>Map</h2>
           <p>Read-only project boundary rings with visible, viewport-batched geometry filters.</p>
         </div>
         <div class="head-actions">
@@ -397,7 +400,7 @@
       <form class="filters boundary-filters" id="boundaries-form">
         <div class="field field-wide">
           <label for="b-q">Search project / promoter</label>
-          <input id="b-q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" />
+          <input id="b-q" type="text" placeholder="e.g. residency, shivalikâ€¦" autocomplete="off" />
         </div>
         <div class="field"><label for="b-district">District</label><select id="b-district"><option value="">All districts</option></select></div>
         <div class="field"><label for="b-taluka">Taluka</label><select id="b-taluka"><option value="">All talukas</option></select></div>
@@ -418,24 +421,36 @@
         </div>
         <div class="field field-wide boundary-toggle">
           <label class="check-label" for="b-use-view">
-            <input id="b-use-view" type="checkbox" checked />
+            <input id="b-use-view" type="checkbox" />
             <span>Use current map view as the bounding box</span>
           </label>
         </div>
       </form>
+      <div class="boundary-actions">
+        <button type="button" id="b-show-nearby" class="btn btn-nearby" disabled>Show nearby</button>
+      </div>
       <div id="boundaries-meta" class="result-meta" aria-live="polite"></div>
-      <div class="boundary-layout">
+      <div class="boundary-stage" id="boundaries-stage">
         <div class="card map-card">
           <div class="card-head">
             <h3>Project boundary</h3>
-            <span class="tag tag-muted">_source geometry</span>
+            <div class="head-actions map-head-actions">
+              <span class="tag tag-muted">_source geometry</span>
+              <button type="button" id="boundaries-drawer-toggle" class="btn btn-ghost" aria-expanded="false" aria-controls="boundaries-results-drawer">Results</button>
+            </div>
           </div>
           <div id="boundaries-map" class="boundary-map" role="application" aria-label="Project boundary map"></div>
           <div id="boundaries-map-status" class="map-status" aria-live="polite">Map ready.</div>
-        </div>
-        <div class="boundary-results stack">
-          <div id="boundaries-results" class="stack" aria-live="polite"></div>
-          <div id="boundaries-query"></div>
+          <section id="boundaries-results-drawer" class="results-drawer" aria-label="Boundary results" aria-hidden="true">
+            <div class="drawer-head">
+              <h3>Boundary results</h3>
+              <button type="button" id="boundaries-drawer-close" class="btn btn-ghost" aria-label="Close results">Close</button>
+            </div>
+            <div class="drawer-body">
+              <div id="boundaries-results" class="stack" aria-live="polite"></div>
+              <div id="boundaries-query"></div>
+            </div>
+          </section>
         </div>
       </div>
     </section>
@@ -447,6 +462,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=5"></script>
+  <script src="/static/app.js?v=8"></script>
 </body>
 </html>

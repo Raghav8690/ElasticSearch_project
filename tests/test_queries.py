@@ -8,6 +8,8 @@ from backend.queries import (
     build_page,
     build_search_after,
     extract_project_address,
+    normalize_boundary_query,
+    derive_phrase_prefix,
     parse_search_sort,
     parse_sort,
     parse_cursor,
@@ -23,6 +25,7 @@ from backend.queries import (
     DISABLED_OBJECTS,
     HIGHLIGHT_PRE,
     HIGHLIGHT_POST,
+    TYPO_MAP,
 )
 from backend.schemas import AppError
 
@@ -371,11 +374,13 @@ def test_build_boundary_query_uses_only_indexed_filters_and_source_path():
     )
     assert body["size"] == 500
     assert body["search_after"] == [573]
-    assert body["sort"] == [{"projectId": "asc"}]
+    # With q: sort is score-first (new feature contract)
+    assert body["sort"] == [{"_score": "desc"}, {"projectId": "asc"}]
     assert "Project Profile.Map Location" in body["_source"]
     assert "Project Profile" not in body["query"]
     assert "geo_distance" not in str(body)
     assert "runtime_mappings" not in str(body)
+    # With q + filters: both filter and should are present
     assert body["query"]["bool"]["filter"]
     assert body["query"]["bool"]["should"]
 
@@ -387,3 +392,239 @@ def test_build_boundary_query_rejects_bad_size_and_after():
         build_boundary_query(size=10001)
     with pytest.raises(AppError):
         build_boundary_query(after=-1)
+
+
+# ---------------------------------------------------------------------------
+# New tests for Map Search-to-Centroid feature contracts
+# ---------------------------------------------------------------------------
+
+# --- Contract 1 & 2: Normalization and typo map ----------------------------
+
+class TestNormalizeBoundaryQuery:
+    """normalize_boundary_query(q) -> (normalized_q, phrase_prefix)"""
+
+    def test_lowercases_text(self):
+        norm, _ = normalize_boundary_query("SHIVALIK Residences")
+        assert norm == "shivalik residences"
+
+    def test_strips_punctuation(self):
+        norm, _ = normalize_boundary_query("shivalik, residences!")
+        assert norm == "shivalik residences"
+
+    def test_collapses_whitespace(self):
+        norm, _ = normalize_boundary_query("  shivalik   residences  ")
+        assert norm == "shivalik residences"
+
+    def test_typo_recidency_corrected(self):
+        norm, _ = normalize_boundary_query("shivalik recidency")
+        assert norm == "shivalik residency"
+
+    def test_typo_recidancy_corrected(self):
+        norm, _ = normalize_boundary_query("recidancy")
+        assert norm == "residency"
+
+    def test_typo_recidence_corrected(self):
+        norm, _ = normalize_boundary_query("recidence")
+        assert norm == "residency"
+
+    def test_typo_recidance_corrected(self):
+        norm, _ = normalize_boundary_query("recidance")
+        assert norm == "residency"
+
+    def test_typo_map_has_all_four_variants(self):
+        for typo in ("recidency", "recidancy", "recidence", "recidance"):
+            assert typo in TYPO_MAP
+            assert TYPO_MAP[typo] == "residency"
+
+    def test_original_text_not_modified(self):
+        # fuzzy matching uses original q, not normalized — normalize returns both
+        norm, _ = normalize_boundary_query("shivalik recidency")
+        # normalized changes the typo
+        assert "recidency" not in norm
+        assert "residency" in norm
+
+    def test_no_typo_passthrough(self):
+        norm, _ = normalize_boundary_query("shivalik residency")
+        assert norm == "shivalik residency"
+
+
+# --- Contract 3: Phrase-prefix derivation ----------------------------------
+
+class TestDerivePhrasePrefix:
+    """derive_phrase_prefix(normalized_q) -> phrase_prefix_str"""
+
+    def test_single_token_full_word_passthrough(self):
+        # Short single token: use as-is
+        assert derive_phrase_prefix("shivalik") == "shivalik"
+
+    def test_multi_token_prefix_last_five_chars(self):
+        # "shivalik residency" -> "shivalik resid" (first 5 chars of "residency")
+        assert derive_phrase_prefix("shivalik residency") == "shivalik resid"
+
+    def test_last_token_short_passthrough(self):
+        # Last token <= 5 chars: use full token
+        assert derive_phrase_prefix("shivalik home") == "shivalik home"
+
+    def test_three_token_prefix(self):
+        # three tokens: prefix last
+        assert derive_phrase_prefix("green valley residences") == "green valley resid"
+
+    def test_single_short_token(self):
+        assert derive_phrase_prefix("abc") == "abc"
+
+    def test_last_token_exactly_five_chars(self):
+        # exactly 5 chars: use full token
+        assert derive_phrase_prefix("green tower") == "green tower"
+
+
+# --- Contract 4: Tiered boundary query DSL with q --------------------------
+
+class TestBuildBoundaryQueryWithQ:
+    """build_boundary_query(q=...) must emit two-tier bool.should."""
+
+    def test_no_q_keeps_projectid_sort_and_integer_cursor(self):
+        body = build_boundary_query(size=100)
+        assert body["sort"] == [{"projectId": "asc"}]
+        assert "search_after" not in body
+
+    def test_no_q_with_after_uses_integer_cursor(self):
+        body = build_boundary_query(size=100, after=573)
+        assert body["search_after"] == [573]
+
+    def test_with_q_uses_score_sort(self):
+        body = build_boundary_query(q="shivalik residency", size=100)
+        sort = body["sort"]
+        assert sort[0] == {"_score": "desc"}
+        assert sort[1] == {"projectId": "asc"}
+
+    def test_with_q_top_level_minimum_should_match_1(self):
+        body = build_boundary_query(q="shivalik residency", size=100)
+        assert body["query"]["bool"]["minimum_should_match"] == 1
+
+    def test_with_q_exact_group_has_boost_10(self):
+        body = build_boundary_query(q="shivalik residency", size=100)
+        should = body["query"]["bool"]["should"]
+        mm = next(c["multi_match"] for c in should if "multi_match" in c)
+        assert mm["boost"] == 10
+        assert mm["type"] == "cross_fields"
+        assert mm["lenient"] is True
+        assert mm["query"] == "shivalik residency"
+
+    def test_with_q_exact_group_has_project_name_field(self):
+        body = build_boundary_query(q="residency", size=100)
+        should = body["query"]["bool"]["should"]
+        mm = next(c["multi_match"] for c in should if "multi_match" in c)
+        assert "project_name^4" in mm["fields"]
+        assert "promoter_name^3" in mm["fields"]
+        assert "district^3" in mm["fields"]
+
+    def test_with_q_fallback_group_has_boost_1(self):
+        body = build_boundary_query(q="shivalik recidency", size=100)
+        should = body["query"]["bool"]["should"]
+        fallback = next(c["bool"] for c in should if "bool" in c)
+        assert fallback["boost"] == 1
+        assert fallback["minimum_should_match"] == 1
+
+    def test_with_q_fallback_contains_normalized_exact_match(self):
+        body = build_boundary_query(q="shivalik recidency", size=100)
+        should = body["query"]["bool"]["should"]
+        fallback = next(c["bool"] for c in should if "bool" in c)
+        fallback_should = fallback["should"]
+        # Normalized: "shivalik residency"
+        exact = next(
+            c["match"]["project_name"]
+            for c in fallback_should
+            if "match" in c and "fuzziness" not in c.get("match", {}).get("project_name", {})
+        )
+        assert exact["query"] == "shivalik residency"
+        assert exact["operator"] == "and"
+        assert exact["boost"] == 4
+
+    def test_with_q_fallback_contains_phrase_prefix(self):
+        body = build_boundary_query(q="shivalik recidency", size=100)
+        should = body["query"]["bool"]["should"]
+        fallback = next(c["bool"] for c in should if "bool" in c)
+        fallback_should = fallback["should"]
+        prefix = next(
+            c["match_phrase_prefix"]["project_name"]
+            for c in fallback_should
+            if "match_phrase_prefix" in c
+        )
+        # phrase prefix of "shivalik residency" -> "shivalik resid"
+        assert prefix["query"] == "shivalik resid"
+        assert prefix["boost"] == 3
+
+    def test_with_q_fallback_contains_fuzzy_on_original(self):
+        body = build_boundary_query(q="shivalik recidency", size=100)
+        should = body["query"]["bool"]["should"]
+        fallback = next(c["bool"] for c in should if "bool" in c)
+        fallback_should = fallback["should"]
+        fuzzy = next(
+            c["match"]["project_name"]
+            for c in fallback_should
+            if "match" in c and "fuzziness" in c.get("match", {}).get("project_name", {})
+        )
+        # fuzzy uses original typo text
+        assert fuzzy["query"] == "shivalik recidency"
+        assert fuzzy["fuzziness"] == "AUTO"
+        assert fuzzy["prefix_length"] == 1
+        assert fuzzy["max_expansions"] == 25
+        assert fuzzy["operator"] == "and"
+        assert fuzzy["boost"] == 1
+
+    def test_with_q_no_scripts_regexp_runtime_mappings(self):
+        body = build_boundary_query(q="shivalik recidency", size=100)
+        body_str = str(body)
+        assert "script" not in body_str
+        assert "regexp" not in body_str
+        assert "runtime_mappings" not in body_str
+
+    def test_with_q_score_cursor_is_list_of_two(self):
+        # after cursor with q should accept [score, projectId] format encoded as JSON
+        body = build_boundary_query(q="shivalik residency", size=100, after_cursor="[333, 573]")
+        assert body["search_after"] == [333, 573]
+
+    def test_without_q_integer_after_still_works(self):
+        body = build_boundary_query(size=100, after=573)
+        assert body["search_after"] == [573]
+
+    def test_with_q_filters_coexist(self):
+        body = build_boundary_query(q="residency", district="Ahmedabad", size=100)
+        # filters AND should both present
+        assert body["query"]["bool"]["filter"]
+        assert body["query"]["bool"]["should"]
+
+    def test_existing_boundary_source_path_preserved(self):
+        body = build_boundary_query(q="residency", size=100)
+        assert "Project Profile.Map Location" in body["_source"]
+
+
+# --- Contract 5: Pinned-row count / route metadata -------------------------
+
+class TestBoundaryQueryScoreExposure:
+    """score field in build_boundary_query metadata when q is present."""
+
+    def test_query_has_track_total_hits(self):
+        body = build_boundary_query(q="residency", size=100)
+        assert body.get("track_total_hits") is True
+
+    def test_no_q_still_has_track_total_hits(self):
+        body = build_boundary_query(size=100)
+        assert body.get("track_total_hits") is True
+
+
+# --- Existing boundary test updated for new after_cursor param -------------
+
+def test_build_boundary_query_rejects_bad_after_cursor():
+    # integer after still raises on negative
+    with pytest.raises(AppError):
+        build_boundary_query(after=-1)
+    # score cursor: invalid JSON
+    with pytest.raises(AppError):
+        build_boundary_query(q="test", after_cursor="notjson")
+    # score cursor: not a list
+    with pytest.raises(AppError):
+        build_boundary_query(q="test", after_cursor="573")
+    # score cursor: too many elements
+    with pytest.raises(AppError):
+        build_boundary_query(q="test", after_cursor="[1, 2, 3]")

@@ -16,7 +16,7 @@ from elasticsearch import BadRequestError, NotFoundError
 
 from .config import settings
 from .es_client import CAT_INDEX_COLUMNS, ESManager, _safe_reason, flatten_mapping
-from .geometry import boundary_item, matches_geometry, parse_bbox, parse_polygon, parse_radius
+from .geometry import boundary_item, haversine_km, matches_geometry, parse_bbox, parse_polygon, parse_radius
 from .queries import (
     ADDRESS_SOURCE_PATH,
     EXPORT_BATCH,
@@ -194,14 +194,20 @@ async def _scan_boundary_batch(
 ) -> tuple[int | None, int | None, int | None]:
     resp = (await es.client.search(index=settings.index_rera, **body)).body
     hits = (resp.get("hits") or {}).get("hits") or []
+    has_score_sort = body.get("sort", [{}])[0] == {"_score": "desc"}
     for hit in hits:
         source = hit.get("_source") or {}
         feature, marker, reason = boundary_item(source)
         project_id = source.get("projectId") or hit.get("_id")
         key = str(project_id)
+        score = hit.get("_score") if has_score_sort else None
         if feature is not None:
+            if score is not None:
+                feature["score"] = round(float(score), 4)
             entry["features"][key] = feature
         elif marker is not None:
+            if score is not None:
+                marker["score"] = round(float(score), 4)
             entry["markers"][key] = marker
         else:
             counter = "degenerate" if reason == "degenerate" else "unparseable"
@@ -210,7 +216,10 @@ async def _scan_boundary_batch(
     if total is not None:
         entry["total"] = total
     sort_values = hits[-1].get("sort") if hits else None
-    next_after = _as_int(sort_values[0]) if sort_values else None
+    if sort_values and has_score_sort:
+        next_after = json.dumps(sort_values, separators=(",", ":"))
+    else:
+        next_after = _as_int(sort_values[0]) if sort_values else None
     entry["next_after"] = next_after
     entry["complete"] = not hits or next_after is None
     entry["es_took_ms"] = resp.get("took")
@@ -910,7 +919,7 @@ async def suggest_projects(
             source.get("project_name")
             or source.get("promoter_name")
             or source.get("reg_no")
-            or str(project_id or "—")
+            or str(project_id or "Ã¢â‚¬â€")
         )
         meta_parts = [
             source.get("promoter_name"),
@@ -919,7 +928,7 @@ async def suggest_projects(
             source.get("project_type"),
             source.get("reg_no"),
         ]
-        meta = " · ".join(str(part) for part in meta_parts if part and str(part) != str(label))
+        meta = " Ã‚Â· ".join(str(part) for part in meta_parts if part and str(part) != str(label))
         suggestions.append(
             {
                 "_id": hit.get("_id"),
@@ -1153,8 +1162,9 @@ async def console_query(
 async def project_boundaries(request: Request, es: ESManager = Depends(get_es)) -> dict[str, Any]:
     start = time.perf_counter()
     params = request.query_params
+    q_raw = params.get("q") or None
     filters: dict[str, str | None] = {
-        "q": params.get("q") or None,
+        "q": q_raw,
         "district": params.get("district") or None,
         "taluka": params.get("taluka") or None,
         "project_type": params.get("project_type") or None,
@@ -1162,26 +1172,40 @@ async def project_boundaries(request: Request, es: ESManager = Depends(get_es)) 
         "promoter": params.get("promoter") or None,
         "reg_no": params.get("reg_no") or None,
     }
+    has_query = bool(q_raw and q_raw.strip())
 
     size = _as_int(params.get("size")) if params.get("size") is not None else 1000
     if size is None:
         raise AppError("invalid_request", "size must be an integer.")
-    after_raw = params.get("after")
-    after = _as_int(after_raw) if after_raw is not None else None
-    if after_raw is not None and after is None:
-        raise AppError("invalid_request", "after must be a non-negative projectId.")
+
+    # Cursor: score mode ([score, projectId] JSON) when q present, integer otherwise
+    after_cursor_raw = params.get("after_cursor") or None
+    after_raw = params.get("after") or None
+    after: int | None = None
+    after_cursor: str | None = None
+    if has_query and after_cursor_raw is not None:
+        after_cursor = after_cursor_raw
+    elif after_raw is not None:
+        after = _as_int(after_raw)
+        if after is None:
+            raise AppError("invalid_request", "after must be a non-negative projectId.")
 
     geometry = {
         "bbox": parse_bbox(params.get("bbox")),
         "radius": parse_radius(params.get("lat"), params.get("lon"), params.get("distance_km")),
         "polygon": parse_polygon(params.get("polygon")),
     }
-    body = build_boundary_query(**filters, size=size, after=after)
+    body = build_boundary_query(**filters, size=size, after=after, after_cursor=after_cursor)
     key = _boundary_cache_key(filters)
 
     async with _boundary_cache_lock:
         entry = _get_boundary_cache(key)
-        cache_hit = entry is not None and after is None and bool(entry["features"] or entry["markers"])
+        cache_hit = (
+            entry is not None
+            and after is None
+            and after_cursor is None
+            and bool(entry["features"] or entry["markers"])
+        )
         if entry is None:
             entry = _new_boundary_cache()
             _boundary_cache[key] = entry
@@ -1196,8 +1220,29 @@ async def project_boundaries(request: Request, es: ESManager = Depends(get_es)) 
 
         features = [item for item in entry["features"].values() if _boundary_matches(item, geometry)]
         markers = [item for item in entry["markers"].values() if _boundary_matches(item, geometry)]
-        features.sort(key=lambda item: item.get("id") or 0)
-        markers.sort(key=lambda item: item.get("id") or 0)
+
+        # Attach distance_km when radius is present
+        radius_filter = geometry["radius"]
+        if radius_filter is not None:
+            origin, _dist = radius_filter
+            for item in features:
+                center = item.get("center") or [0.0, 0.0]
+                item["distance_km"] = round(haversine_km(origin, (float(center[0]), float(center[1]))), 1)
+            for item in markers:
+                center = item.get("center") or [0.0, 0.0]
+                item["distance_km"] = round(haversine_km(origin, (float(center[0]), float(center[1]))), 1)
+
+        # Sort: score desc when q present, distance_km asc when radius, else id asc
+        if has_query:
+            features.sort(key=lambda item: (-(item.get("score") or 0), item.get("id") or 0))
+            markers.sort(key=lambda item: (-(item.get("score") or 0), item.get("id") or 0))
+        elif radius_filter is not None:
+            features.sort(key=lambda item: (item.get("distance_km") or 0, item.get("id") or 0))
+            markers.sort(key=lambda item: (item.get("distance_km") or 0, item.get("id") or 0))
+        else:
+            features.sort(key=lambda item: item.get("id") or 0)
+            markers.sort(key=lambda item: item.get("id") or 0)
+
         skipped = dict(entry["skipped"])
         complete = bool(entry["complete"])
         loaded = len(entry["features"]) + len(entry["markers"])

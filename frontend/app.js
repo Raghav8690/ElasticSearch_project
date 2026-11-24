@@ -109,7 +109,7 @@ function kpi(label, value, cls, sub) {
     "div",
     { class: "kpi" },
     h("div", { class: "kpi-label", text: label }),
-    h("div", { class: `kpi-value ${cls || ""}`, text: value == null ? "—" : String(value) }),
+    h("div", { class: `kpi-value ${cls || ""}`, text: value == null ? "Ã¢â‚¬â€" : String(value) }),
     h("div", { class: "kpi-sub", text: sub || "" })
   );
 }
@@ -119,7 +119,7 @@ function kv(label, value, mono) {
     "div",
     { class: "kv" },
     h("span", { class: "k", text: label }),
-    h("span", { class: `v ${mono ? "mono" : ""}`, text: value == null ? "—" : String(value) })
+    h("span", { class: `v ${mono ? "mono" : ""}`, text: value == null ? "Ã¢â‚¬â€" : String(value) })
   );
 }
 
@@ -199,7 +199,7 @@ function setStatusPill(status) {
     if (s === "green") label.textContent = "healthy";
     else if (s === "yellow") label.textContent = "yellow";
     else if (s === "red") label.textContent = "offline";
-    else label.textContent = "checking…";
+    else label.textContent = "checkingÃ¢â‚¬Â¦";
   }
 }
 
@@ -221,10 +221,10 @@ function indexCard(idx, status) {
       "div",
       { class: "kv-grid" },
       kv("Index", idx.index, true),
-      kv("Documents", idx.docs != null ? Number(idx.docs).toLocaleString() : "—"),
-      kv("Store size", idx.store || "—"),
-      kv("Shards", `${idx.pri ?? "—"} primary / ${idx.rep ?? "—"} replica`),
-      kv("Index status", idx.status || "—"),
+      kv("Documents", idx.docs != null ? Number(idx.docs).toLocaleString() : "Ã¢â‚¬â€"),
+      kv("Store size", idx.store || "Ã¢â‚¬â€"),
+      kv("Shards", `${idx.pri ?? "Ã¢â‚¬â€"} primary / ${idx.rep ?? "Ã¢â‚¬â€"} replica`),
+      kv("Index status", idx.status || "Ã¢â‚¬â€"),
       kv("Cluster status", status),
       kv("Configured", idx.configured ? "yes" : "no")
     )
@@ -303,22 +303,22 @@ function renderDashboard(root, ctx) {
       { class: "kpi-grid" },
       kpi(
         "Documents",
-        idx && idx.docs != null ? Number(idx.docs).toLocaleString() : "—",
+        idx && idx.docs != null ? Number(idx.docs).toLocaleString() : "Ã¢â‚¬â€",
         "",
         "in the configured index"
       ),
-      kpi("Store size", idx && idx.store ? idx.store : "—", "", "configured index storage"),
+      kpi("Store size", idx && idx.store ? idx.store : "Ã¢â‚¬â€", "", "configured index storage"),
       kpi(
         "Primary shards",
-        idx && idx.pri != null ? idx.pri : "—",
+        idx && idx.pri != null ? idx.pri : "Ã¢â‚¬â€",
         "",
-        `${idx && idx.rep != null ? idx.rep : "—"} replica(s) configured`
+        `${idx && idx.rep != null ? idx.rep : "Ã¢â‚¬â€"} replica(s) configured`
       ),
       kpi(
         "Unassigned shards",
-        health.unassigned_shards ?? "—",
+        health.unassigned_shards ?? "Ã¢â‚¬â€",
         health.unassigned_shards ? "is-warn" : "is-green",
-        `${health.active_primary_shards ?? "—"} active primaries · cluster ${status}`
+        `${health.active_primary_shards ?? "Ã¢â‚¬â€"} active primaries Ã‚Â· cluster ${status}`
       )
     ),
     h("div", { class: "grid-2" }, indexCard(idx, status), yellowCard(health)),
@@ -336,7 +336,7 @@ function renderDashboard(root, ctx) {
         h(
           "ul",
           {},
-          ...errs.map(([key, value]) => h("li", {}, h("code", { text: key }), ` — ${value}`))
+          ...errs.map(([key, value]) => h("li", {}, h("code", { text: key }), ` Ã¢â‚¬â€ ${value}`))
         )
       )
     );
@@ -350,7 +350,7 @@ async function loadDashboard(force = false) {
   const body = document.getElementById("dashboard-body");
   if (!body) return;
   if (!state.dashboardLoaded || force) {
-    body.replaceChildren(loading("Loading cluster facts…"));
+    body.replaceChildren(loading("Loading cluster factsÃ¢â‚¬Â¦"));
   }
   const [health, config, caps] = await Promise.allSettled([
     API.get("/api/health"),
@@ -404,7 +404,7 @@ function queryDetails(queryUsed, label = "Query used") {
 
 function renderHighlighted(text, fragments) {
   const raw = Array.isArray(fragments) && fragments.length ? fragments[0] : text;
-  if (raw == null) return document.createTextNode("—");
+  if (raw == null) return document.createTextNode("Ã¢â‚¬â€");
   const parts = [];
   const regex = /\[\[HL\]\]([\s\S]*?)\[\[\/HL\]\]/g;
   let last = 0;
@@ -476,7 +476,7 @@ function renderFacets(facets) {
 
 async function loadFacets() {
   const body = document.getElementById("facets-body");
-  if (body) body.replaceChildren(h("div", { class: "facets-loading", text: "Loading facets…" }));
+  if (body) body.replaceChildren(h("div", { class: "facets-loading", text: "Loading facetsÃ¢â‚¬Â¦" }));
   try {
     const res = await API.get("/api/projects/facets");
     const facets = (res.data && res.data.facets) || {};
@@ -533,21 +533,21 @@ function resultsTable(hits) {
   const columns = ["ID", "Project", "District", "Taluka", "Type", "Status", "Price", "Start", "End", "Docs"];
   const rows = hits.map((hit) => {
     const docs = hit.scrape_status && hit.scrape_status.documents;
-    const name = hit.project_name || "—";
+    const name = hit.project_name || "Ã¢â‚¬â€";
     const open = () => openDetail(hit._id || hit.projectId);
     return h(
       "tr",
       { class: "row-click", onclick: open },
-      h("td", { class: "mono", text: String(hit._id || hit.projectId || "—") }),
+      h("td", { class: "mono", text: String(hit._id || hit.projectId || "Ã¢â‚¬â€") }),
       h("td", { class: "truncate", title: String(name) }, renderHighlighted(hit.project_name, hit.highlight && hit.highlight.project_name)),
-      h("td", { text: hit.district || "—" }),
-      h("td", { text: hit.taluka || "—" }),
-      h("td", { text: hit.project_type || "—" }),
-      h("td", { text: hit.project_status || "—" }),
-      h("td", { class: "num", text: hit.price || "—" }),
-      h("td", { text: hit.start_date || "—" }),
-      h("td", { text: hit.end_date || "—" }),
-      h("td", { class: "num", text: docs == null ? "—" : String(docs) })
+      h("td", { text: hit.district || "Ã¢â‚¬â€" }),
+      h("td", { text: hit.taluka || "Ã¢â‚¬â€" }),
+      h("td", { text: hit.project_type || "Ã¢â‚¬â€" }),
+      h("td", { text: hit.project_status || "Ã¢â‚¬â€" }),
+      h("td", { class: "num", text: hit.price || "Ã¢â‚¬â€" }),
+      h("td", { text: hit.start_date || "Ã¢â‚¬â€" }),
+      h("td", { text: hit.end_date || "Ã¢â‚¬â€" }),
+      h("td", { class: "num", text: docs == null ? "Ã¢â‚¬â€" : String(docs) })
     );
   });
   return h(
@@ -567,7 +567,7 @@ async function runSearch() {
   const metaEl = document.getElementById("projects-meta");
   const queryEl = document.getElementById("projects-query");
   if (!results) return;
-  results.replaceChildren(loading("Searching…"));
+  results.replaceChildren(loading("SearchingÃ¢â‚¬Â¦"));
   if (metaEl) metaEl.replaceChildren();
   if (queryEl) queryEl.replaceChildren();
   try {
@@ -578,8 +578,8 @@ async function runSearch() {
       metaEl.replaceChildren(
         h("span", { class: "meta-item" }, h("strong", { text: Number(meta.total || 0).toLocaleString() }), " matches"),
         h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
-        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "—")),
-        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "—"))
+        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "Ã¢â‚¬â€")),
+        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "Ã¢â‚¬â€"))
       );
     }
     results.replaceChildren(resultsTable(hits));
@@ -669,10 +669,10 @@ function initSuggest() {
                 "aria-selected": "false",
                 onclick: () => choose(item),
               },
-              h("span", { class: "suggest-name", text: item.label || item.project_name || "—" }),
+              h("span", { class: "suggest-name", text: item.label || item.project_name || "Ã¢â‚¬â€" }),
               h("span", {
                 class: "suggest-meta",
-                text: [item.match_label, item.meta].filter(Boolean).join(" · "),
+                text: [item.match_label, item.meta].filter(Boolean).join(" Ã‚Â· "),
               })
             )
           )
@@ -720,7 +720,7 @@ function isComplex(value) {
 }
 
 function renderPrimitive(value) {
-  if (value === null || value === undefined) return document.createTextNode("—");
+  if (value === null || value === undefined) return document.createTextNode("Ã¢â‚¬â€");
   if (typeof value === "string" && isSafeUrl(value)) {
     return h("a", { href: value, target: "_blank", rel: "noopener noreferrer", text: value });
   }
@@ -734,9 +734,9 @@ function summaryFor(value) {
 
 function renderValue(value, depth = 0) {
   if (isPrimitive(value)) return renderPrimitive(value);
-  if (depth > 7) return h("span", { class: "muted", text: "…" });
+  if (depth > 7) return h("span", { class: "muted", text: "Ã¢â‚¬Â¦" });
   if (Array.isArray(value)) {
-    if (!value.length) return document.createTextNode("—");
+    if (!value.length) return document.createTextNode("Ã¢â‚¬â€");
     if (value.every(isPrimitive)) {
       return document.createTextNode(value.map((v) => (v == null ? "" : String(v))).join(", "));
     }
@@ -891,7 +891,7 @@ function renderDetail(root, res) {
     mapLink(sections),
     h("p", {
       class: "muted small",
-      text: `Lookup: ${data.lookup || "get_doc"} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
+      text: `Lookup: ${data.lookup || "get_doc"} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`,
     })
   );
 
@@ -905,7 +905,7 @@ function renderDetail(root, res) {
 async function loadDetail(projectId) {
   const body = document.getElementById("detail-body");
   if (!body) return;
-  body.replaceChildren(loading(`Loading project ${projectId}…`));
+  body.replaceChildren(loading(`Loading project ${projectId}Ã¢â‚¬Â¦`));
   try {
     const res = await API.get(`/api/projects/${encodeURIComponent(projectId)}`);
     renderDetail(body, res);
@@ -1073,7 +1073,7 @@ function boolCount(buckets, truthy) {
 }
 
 function fmtNumber(value) {
-  return value == null ? "—" : Number(value).toLocaleString();
+  return value == null ? "Ã¢â‚¬â€" : Number(value).toLocaleString();
 }
 
 function renderAnalytics(root, ctx) {
@@ -1094,7 +1094,7 @@ function renderAnalytics(root, ctx) {
       "div",
       { class: "kpi-grid" },
       kpi("Documents", fmtNumber(stats.count), "", "documents field present"),
-      kpi("Average documents", stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—", "", "per project"),
+      kpi("Average documents", stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€", "", "per project"),
       kpi("Max documents", fmtNumber(stats.max), "", "single project"),
       kpi("Docs downloaded", fmtNumber(boolCount(downloaded, true)), "", "scrape_status.docs_downloaded")
     )
@@ -1135,7 +1135,7 @@ async function loadAnalytics(force = false) {
   const body = document.getElementById("analytics-body");
   if (!body) return;
   if (analyticsLoaded && !force) return;
-  body.replaceChildren(loading("Loading analytics…"));
+  body.replaceChildren(loading("Loading analyticsÃ¢â‚¬Â¦"));
   const [overview, dates] = await Promise.allSettled([
     API.get("/api/analytics/overview"),
     API.get("/api/analytics/dates"),
@@ -1170,7 +1170,7 @@ function missingCard(missing, total) {
       {},
         h("td", {}, h("code", { text: label })),
         h("td", { class: "num", text: fmtNumber(count) }),
-        h("td", { class: "num", text: pct != null ? `${pct.toFixed(2)}%` : "—" })
+        h("td", { class: "num", text: pct != null ? `${pct.toFixed(2)}%` : "Ã¢â‚¬â€" })
     );
   });
   return h(
@@ -1206,7 +1206,7 @@ function scrapeCard(aggs) {
       kv("Docs with errors", fmtNumber(errors)),
       kv("documents count", fmtNumber(stats.count)),
       kv("min / max", `${fmtNumber(stats.min)} / ${fmtNumber(stats.max)}`),
-      kv("avg / sum", `${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—"} / ${fmtNumber(stats.sum)}`)
+      kv("avg / sum", `${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€"} / ${fmtNumber(stats.sum)}`)
     )
   );
 }
@@ -1277,7 +1277,7 @@ function renderQuality(res) {
       ),
       h("p", {
         class: "muted small",
-        text: `es_took_ms ${(res.meta || {}).es_took_ms ?? "—"} · wall_ms ${(res.meta || {}).wall_ms ?? "—"} · avg documents ${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—"}`,
+        text: `es_took_ms ${(res.meta || {}).es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${(res.meta || {}).wall_ms ?? "Ã¢â‚¬â€"} Ã‚Â· avg documents ${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€"}`,
       })
     );
   }
@@ -1306,7 +1306,7 @@ async function loadQuality(force = false) {
   const summary = document.getElementById("quality-summary");
   if (!summary) return;
   if (qualityLoaded && !force) return;
-  summary.replaceChildren(loading("Loading quality checks…"));
+  summary.replaceChildren(loading("Loading quality checksÃ¢â‚¬Â¦"));
   try {
     const res = await API.get("/api/quality/scrape");
     renderQuality(res);
@@ -1321,14 +1321,14 @@ async function runPipeline() {
   const out = document.getElementById("pipeline-output");
   if (!out || !input || !validateJsonInput(input, "pipeline-error", "Pipeline source JSON")) return;
   const source = JSON.parse(input.value);
-  out.replaceChildren(loading("Simulating…"));
+  out.replaceChildren(loading("SimulatingÃ¢â‚¬Â¦"));
   try {
     const res = await API.post("/api/quality/pipeline-simulate", { source });
     const data = res.data || {};
     out.replaceChildren(
       h("p", {
         class: "muted small",
-        text: `Pipeline: ${data.pipeline_id || "—"} · wall_ms ${(res.meta || {}).wall_ms ?? "—"}`,
+        text: `Pipeline: ${data.pipeline_id || "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${(res.meta || {}).wall_ms ?? "Ã¢â‚¬â€"}`,
       }),
       queryDetails(data.result || {}, "Simulation result"),
       queryDetails((res.meta || {}).query_used)
@@ -1376,12 +1376,12 @@ function pagTable(hits) {
           h(
             "tr",
             {},
-            h("td", {}, h("span", { class: "mono", text: String(hit.projectId || hit._id || "—") })),
-            h("td", { text: hit.project_name || "—" }),
-            h("td", { text: hit.district || "—" }),
-            h("td", { text: hit.project_type || "—" }),
-            h("td", { text: hit.project_status || "—" }),
-            h("td", { text: hit.price || "—" })
+            h("td", {}, h("span", { class: "mono", text: String(hit.projectId || hit._id || "Ã¢â‚¬â€") })),
+            h("td", { text: hit.project_name || "Ã¢â‚¬â€" }),
+            h("td", { text: hit.district || "Ã¢â‚¬â€" }),
+            h("td", { text: hit.project_type || "Ã¢â‚¬â€" }),
+            h("td", { text: hit.project_status || "Ã¢â‚¬â€" }),
+            h("td", { text: hit.price || "Ã¢â‚¬â€" })
           )
         )
       )
@@ -1397,7 +1397,7 @@ async function pagFromSize() {
   const results = document.getElementById("pag-from-results");
   const queryEl = document.getElementById("pag-from-query");
   if (!results) return;
-  results.replaceChildren(loading("Loading…"));
+  results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
   try {
     const res = await API.get("/api/projects/page", { page, size });
     const data = res.data || {};
@@ -1405,7 +1405,7 @@ async function pagFromSize() {
     results.replaceChildren(
       h("p", {
           class: "muted small mb-8",
-        text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
+        text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`,
       }),
       pagTable(data.hits)
     );
@@ -1420,7 +1420,7 @@ async function pagSearchAfter() {
   const info = document.getElementById("pag-cursor-info");
   const queryEl = document.getElementById("pag-cursor-query");
   if (!results) return;
-  results.replaceChildren(loading("Loading…"));
+  results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
   try {
     const params = { size: 100 };
     if (pagCursor) params.cursor = JSON.stringify(pagCursor);
@@ -1429,7 +1429,7 @@ async function pagSearchAfter() {
     const meta = res.meta || {};
     pagCursor = data.next_cursor;
     if (info) {
-      info.textContent = `cursor=${JSON.stringify(pagCursor)} has_more=${data.has_more} mode=${data.mode} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
+      info.textContent = `cursor=${JSON.stringify(pagCursor)} has_more=${data.has_more} mode=${data.mode} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`;
     }
     results.replaceChildren(pagTable(data.hits));
     if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "search_after query"));
@@ -1447,7 +1447,7 @@ function setPitStatus(text, cls) {
 
 async function pitOpen() {
   const info = document.getElementById("pit-info");
-  if (info) info.textContent = "Opening PIT session…";
+  if (info) info.textContent = "Opening PIT sessionÃ¢â‚¬Â¦";
   setPitStatus("opening", "tag-yellow");
   try {
     const res = await API.post("/api/pit");
@@ -1471,7 +1471,7 @@ async function pitNext() {
     if (info) info.textContent = "No PIT session open. Click 'Open PIT' first.";
     return;
   }
-  if (results) results.replaceChildren(loading("Loading…"));
+  if (results) results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
   try {
     const params = { size: 100, session: pitSessionId, pit: true };
     if (pitCursor) params.cursor = JSON.stringify(pitCursor);
@@ -1480,7 +1480,7 @@ async function pitNext() {
     const meta = res.meta || {};
     pitCursor = data.next_cursor;
     if (info) {
-      info.textContent = `PIT session=${pitSessionId} cursor=${JSON.stringify(pitCursor)} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
+      info.textContent = `PIT session=${pitSessionId} cursor=${JSON.stringify(pitCursor)} has_more=${data.has_more} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`;
     }
     if (results) results.replaceChildren(pagTable(data.hits));
   } catch (err) {
@@ -1540,7 +1540,7 @@ async function runAnalyze() {
   } else {
     payload.analyzer = "standard";
   }
-  out.replaceChildren(loading("Analyzing…"));
+  out.replaceChildren(loading("AnalyzingÃ¢â‚¬Â¦"));
   try {
     const res = await API.post("/api/analyze", payload);
     const tokens = (res.data && res.data.tokens) || [];
@@ -1583,7 +1583,7 @@ async function loadMapping(force = false) {
   const aliasesEl = document.getElementById("mapping-aliases");
   const explainEl = document.getElementById("mapping-explain");
   const queryEl = document.getElementById("mapping-query");
-  if (statsEl) statsEl.replaceChildren(loading("Loading mapping & stats…"));
+  if (statsEl) statsEl.replaceChildren(loading("Loading mapping & statsÃ¢â‚¬Â¦"));
 
   const index = "gujrat_rera_data";
   const [mappingRes, statsRes, aliasesRes] = await Promise.allSettled([
@@ -1600,7 +1600,7 @@ async function loadMapping(force = false) {
           "div",
           { class: "kpi-grid" },
           kpi("Documents", fmtNumber(sd.docs), "", "total primary count"),
-          kpi("Store", sd.store_bytes != null ? `${(sd.store_bytes / 1048576).toFixed(1)} MB` : "—", "", "storage size"),
+          kpi("Store", sd.store_bytes != null ? `${(sd.store_bytes / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€", "", "storage size"),
           kpi("Segments", fmtNumber(sd.segments), "", "searchable segments"),
           kpi("Total queries", fmtNumber(sd.search && sd.search.query_total), "", "search queries executed")
         )
@@ -1645,14 +1645,14 @@ async function loadMapping(force = false) {
                     { class: f.indexed ? "" : "row-disabled" },
                     h("td", {}, h("code", { text: f.field })),
                     h("td", { text: f.type || "object" }),
-                    h("td", { text: f.indexed ? "✓ true" : "✗ false (stored only)" }),
-                    h("td", { text: f.enabled !== false ? "✓ true" : "✗ false" })
+                    h("td", { text: f.indexed ? "Ã¢Å“â€œ true" : "Ã¢Å“â€” false (stored only)" }),
+                    h("td", { text: f.enabled !== false ? "Ã¢Å“â€œ true" : "Ã¢Å“â€” false" })
                   )
                 )
               )
             )
           ),
-          h("p", { class: "muted small mt-8", text: `Indexed fields are queryable; non-indexed objects exist only in _source · wall_ms ${meta.wall_ms ?? "—"}` })
+          h("p", { class: "muted small mt-8", text: `Indexed fields are queryable; non-indexed objects exist only in _source Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}` })
         )
       );
     } else {
@@ -1709,7 +1709,7 @@ async function loadOps(force = false) {
   const healthEl = document.getElementById("ops-health");
   const nodesEl = document.getElementById("ops-nodes");
   const shardsEl = document.getElementById("ops-shards");
-  if (healthEl) healthEl.replaceChildren(loading("Loading ops health…"));
+  if (healthEl) healthEl.replaceChildren(loading("Loading ops healthÃ¢â‚¬Â¦"));
 
   const [healthRes, nodesRes, shardsRes] = await Promise.allSettled([
     API.get("/api/ops/health"),
@@ -1733,8 +1733,8 @@ async function loadOps(force = false) {
           h(
             "div",
             { class: "kv-grid" },
-            kv("Cluster name", hd.cluster_name || "—"),
-            kv("Status", hd.status || "—"),
+            kv("Cluster name", hd.cluster_name || "Ã¢â‚¬â€"),
+            kv("Status", hd.status || "Ã¢â‚¬â€"),
             kv("Nodes count", hd.number_of_nodes),
             kv("Active primary shards", hd.active_primary_shards),
             kv("Active total shards", hd.active_shards),
@@ -1776,12 +1776,12 @@ async function loadOps(force = false) {
                     h(
                       "tr",
                       {},
-                      h("td", { text: n.name || "—" }),
-                      h("td", { text: Array.isArray(n.roles) ? n.roles.join(", ") : String(n.roles || "—") }),
-                      h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "—" }),
-                      h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "—" }),
+                      h("td", { text: n.name || "Ã¢â‚¬â€" }),
+                      h("td", { text: Array.isArray(n.roles) ? n.roles.join(", ") : String(n.roles || "Ã¢â‚¬â€") }),
+                      h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "Ã¢â‚¬â€" }),
+                      h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "Ã¢â‚¬â€" }),
                       h("td", { text: fmtNumber(n.docs) }),
-                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "—" })
+                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€" })
                     )
                   )
                 )
@@ -1823,12 +1823,12 @@ async function loadOps(force = false) {
                   h(
                     "tr",
                     { class: s.state === "UNASSIGNED" ? "row-unassigned" : "" },
-                    h("td", {}, h("code", { text: s.index || "—" })),
-                    h("td", { text: s.shard ?? "—" }),
+                    h("td", {}, h("code", { text: s.index || "Ã¢â‚¬â€" })),
+                    h("td", { text: s.shard ?? "Ã¢â‚¬â€" }),
                     h("td", { text: s.prirep === "p" ? "primary" : s.prirep === "r" ? "replica" : s.prirep }),
-                    h("td", { text: s.state || "—" }),
-                    h("td", { text: s.docs != null ? fmtNumber(s.docs) : "—" }),
-                    h("td", { text: s.store || "—" }),
+                    h("td", { text: s.state || "Ã¢â‚¬â€" }),
+                    h("td", { text: s.docs != null ? fmtNumber(s.docs) : "Ã¢â‚¬â€" }),
+                    h("td", { text: s.store || "Ã¢â‚¬â€" }),
                     h("td", { text: s.node || "unassigned" })
                   )
                 )
@@ -1854,7 +1854,7 @@ async function runConsole() {
   if (!results || !input || !validateJsonInput(input, "console-error", "Query body JSON")) return;
   const body = JSON.parse(input.value);
 
-  results.replaceChildren(loading("Running query…"));
+  results.replaceChildren(loading("Running queryÃ¢â‚¬Â¦"));
   if (metaEl) metaEl.replaceChildren();
   if (queryEl) queryEl.replaceChildren();
 
@@ -1868,8 +1868,8 @@ async function runConsole() {
       metaEl.replaceChildren(
         h("span", { class: "meta-item" }, h("strong", { text: fmtNumber(meta.total) }), " matches"),
         h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
-        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "—")),
-        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "—"))
+        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "Ã¢â‚¬â€")),
+        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "Ã¢â‚¬â€"))
       );
     }
 
@@ -1886,6 +1886,7 @@ const boundaryState = {
   featureLayer: null,
   markerLayer: null,
   filterLayer: null,
+  focusLayer: null,
   visibleItems: new Map(),
   layersById: new Map(),
   facetsLoaded: false,
@@ -1895,6 +1896,10 @@ const boundaryState = {
   moveTimer: null,
   ignoreMoves: 0,
   lastBounds: "",
+  focus: null,
+  focusMarker: null,
+  pinned: null,
+  nearbyMode: false,
 };
 
 function boundaryField(id) {
@@ -1905,6 +1910,72 @@ function boundaryField(id) {
 function setBoundaryStatus(text) {
   const el = document.getElementById("boundaries-map-status");
   if (el) el.textContent = text;
+}
+
+function boundarySkeleton(label) {
+  return h(
+    "div",
+    { class: "boundary-skeleton", "aria-busy": "true", "aria-label": label },
+    h("div", { class: "muted small", text: label }),
+    h("div", { class: "boundary-skeleton-line medium" }),
+    h("div", { class: "boundary-skeleton-row" }),
+    h("div", { class: "boundary-skeleton-row" }),
+    h("div", { class: "boundary-skeleton-line wide" }),
+    h("div", { class: "boundary-skeleton-line short" })
+  );
+}
+
+function boundaryEmpty() {
+  return h(
+    "div",
+    { class: "placeholder" },
+    h("div", { text: "No project boundaries matched these filters." }),
+    h(
+      "ul",
+      { class: "empty-suggestions" },
+      h("li", { text: "Clear or simplify the search text." }),
+      h("li", { text: "Remove the bounding box or uncheck current view." }),
+      h("li", { text: "Widen the radius or remove the polygon filter." }),
+      h("li", { text: "Reset filters, then load a broader batch." })
+    )
+  );
+}
+
+function setBoundaryResultsBusy(active) {
+  const results = document.getElementById("boundaries-results");
+  if (!results) return;
+  if (active) results.setAttribute("aria-busy", "true");
+  else results.removeAttribute("aria-busy");
+}
+
+function setBoundaryRefreshing(active, label) {
+  const stage = document.getElementById("boundaries-stage");
+  const card = stage ? stage.querySelector(".map-card") : null;
+  const map = document.getElementById("boundaries-map");
+  if (stage) stage.setAttribute("aria-busy", active ? "true" : "false");
+  if (card) card.classList.toggle("is-refreshing", active);
+  if (map && active) map.dataset.loadingLabel = label || "Loading…";
+  if (map && !active) delete map.dataset.loadingLabel;
+}
+
+function setBoundaryDrawer(open, options = {}) {
+  const drawer = document.getElementById("boundaries-results-drawer");
+  if (!drawer) return;
+  const toggle = document.getElementById("boundaries-drawer-toggle");
+  const wasOpen = drawer.classList.contains("is-open");
+  drawer.classList.toggle("is-open", open);
+  drawer.setAttribute("aria-hidden", open ? "false" : "true");
+  if (toggle) toggle.setAttribute("aria-expanded", String(open));
+  if (wasOpen !== open && boundaryState.map) {
+    setTimeout(() => boundaryState.map.invalidateSize(), 200);
+  }
+  if (options.focus) {
+    const target = open ? document.getElementById("boundaries-drawer-close") : toggle;
+    if (target) {
+      if (open) setTimeout(() => target.focus(), 200);
+      else target.focus();
+    }
+  }
 }
 
 function ignoreBoundaryMove(action) {
@@ -1937,15 +2008,11 @@ function initBoundaryMap() {
   boundaryState.featureLayer = L.layerGroup().addTo(map);
   boundaryState.markerLayer = L.layerGroup().addTo(map);
   boundaryState.filterLayer = L.layerGroup().addTo(map);
+  boundaryState.focusLayer = L.layerGroup().addTo(map);
   boundaryState.map = map;
   map.on("zoomend", applyBoundaryStyle);
   map.on("moveend", () => {
     updateBoundaryBboxField();
-    if (boundaryState.ignoreMoves > 0) return;
-    const useView = document.getElementById("b-use-view");
-    if (!useView || !useView.checked) return;
-    clearTimeout(boundaryState.moveTimer);
-    boundaryState.moveTimer = setTimeout(() => loadBoundaries({ auto: true }), 350);
   });
   updateBoundaryBboxField();
 }
@@ -1973,15 +2040,21 @@ function updateBoundaryBboxField() {
     .join(",");
   const useView = document.getElementById("b-use-view");
   const input = document.getElementById("b-bbox");
-  if (input && useView && useView.checked) input.value = boundaryState.lastBounds;
+  if (useView && useView.checked) {
+    if (input) input.value = boundaryState.lastBounds;
+  } else {
+    boundaryState.lastBounds = "";
+    if (input && !input.matches(":focus")) input.value = "";
+  }
 }
 
 function clearBoundaryGraphics() {
-  [boundaryState.featureLayer, boundaryState.markerLayer, boundaryState.filterLayer].forEach((layer) => {
+  [boundaryState.featureLayer, boundaryState.markerLayer, boundaryState.filterLayer, boundaryState.focusLayer].forEach((layer) => {
     if (layer) layer.clearLayers();
   });
   boundaryState.visibleItems.clear();
   boundaryState.layersById.clear();
+  boundaryState.focusMarker = null;
 }
 
 function boundaryPolygonStyle(zoomed) {
@@ -2009,11 +2082,14 @@ function applyBoundaryStyle() {
 }
 
 function boundaryPopup(item) {
+  const distText = item.distance_km != null ? `Distance ${Number(item.distance_km).toFixed(1)} km` : null;
   return h(
     "div",
     { class: "boundary-popup" },
     h("div", { class: "popup-title", text: item.name || "Project" }),
+    item._isPinned ? h("span", { class: "tag-pinned", text: "Pinned" }) : null,
     h("div", { class: "popup-meta", text: `Project ID ${item.id == null ? "—" : item.id}` }),
+    distText ? h("div", { class: "popup-meta", text: distText }) : null,
     h("div", { class: "popup-meta", text: `District ${item.district || "—"}` }),
     h("div", { class: "popup-meta", text: `Taluka ${item.taluka || "—"}` }),
     h("div", { class: "popup-meta", text: `Status ${item.project_status || "—"}` }),
@@ -2096,30 +2172,161 @@ function renderBoundaryOverlay(params) {
   }
 }
 
-function focusBoundary(item) {
-  if (!boundaryState.map) return;
-  const center = Array.isArray(item.center) ? item.center : [22.2587, 71.1924];
-  ignoreBoundaryMove(() => boundaryState.map.setView(center, Math.max(boundaryState.map.getZoom(), 14)));
+function focusBoundary(item, options = {}) {
+  if (!boundaryState.map || !item) return;
+  const center = Array.isArray(item.center) ? item.center : null;
+  if (!center || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) {
+    setBoundaryStatus("Selected project has no usable centroid.");
+    return;
+  }
+  boundaryState.focus = item;
+  updateNearbyButton();
+
+  if (boundaryState.focusLayer) {
+    boundaryState.focusLayer.clearLayers();
+    boundaryState.focusMarker = L.circleMarker(center, {
+      radius: 10,
+      color: "#7c3aed",
+      weight: 3,
+      fillColor: "#c084fc",
+      fillOpacity: 0.85,
+    }).addTo(boundaryState.focusLayer);
+    boundaryState.focusMarker.bindPopup(boundaryPopup(item));
+    if (options.openPopup !== false) {
+      boundaryState.focusMarker.openPopup();
+    }
+  }
+
+  ignoreBoundaryMove(() => {
+    boundaryState.map.setView(center, Math.max(boundaryState.map.getZoom(), 14));
+  });
+
+  if (options.scrollIntoView || (typeof window !== "undefined" && window.innerWidth <= 900)) {
+    const mapEl = document.querySelector(".map-card") || document.getElementById("boundaries-map");
+    if (mapEl) mapEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
   const layer = boundaryState.layersById.get(String(item.id));
-  if (layer) layer.openPopup();
+  if (layer && options.openPopup !== false && !boundaryState.focusMarker) {
+    layer.openPopup();
+  }
+
+  highlightBoundaryRow(item.id);
+
+  if (options.recenterNearby && boundaryState.nearbyMode) {
+    triggerNearbyMode(item);
+  }
+}
+
+function highlightBoundaryRow(id) {
+  const rows = document.querySelectorAll("#boundaries-results tbody tr");
+  rows.forEach((row) => {
+    if (row.dataset.id === String(id)) {
+      row.classList.add("row-focused");
+    } else {
+      row.classList.remove("row-focused");
+    }
+  });
+}
+
+function updateNearbyButton() {
+  const btn = document.getElementById("b-show-nearby");
+  if (btn) {
+    btn.disabled = !boundaryState.focus;
+  }
+}
+
+function triggerNearbyMode(item = boundaryState.focus) {
+  if (!item || !item.center) return;
+  boundaryState.pinned = item;
+  boundaryState.nearbyMode = true;
+
+  const qInput = document.getElementById("b-q");
+  if (qInput) qInput.value = "";
+
+  const useView = document.getElementById("b-use-view");
+  if (useView) useView.checked = false;
+  const bboxInput = document.getElementById("b-bbox");
+  if (bboxInput) bboxInput.value = "";
+  boundaryState.lastBounds = "";
+
+  const latInput = document.getElementById("b-lat");
+  const lonInput = document.getElementById("b-lon");
+  const distInput = document.getElementById("b-distance");
+  if (latInput) latInput.value = Number(item.center[0]).toFixed(6);
+  if (lonInput) lonInput.value = Number(item.center[1]).toFixed(6);
+  if (distInput) distInput.value = "2";
+
+  loadBoundaries();
 }
 
 function boundaryTable(items) {
-  if (!items.length) {
-    return h("div", { class: "placeholder", text: "No project boundaries matched these filters." });
+  const nearbyActive = boundaryState.nearbyMode && boundaryState.pinned;
+  let displayItems = items.slice();
+
+  if (nearbyActive) {
+    const pinned = boundaryState.pinned;
+    const pinnedKey = String(pinned.id);
+    const pinnedItem = {
+      ...pinned,
+      distance_km: 0.0,
+      _isPinned: true,
+    };
+    const otherItems = displayItems.filter((it) => String(it.id) !== pinnedKey);
+    otherItems.sort((a, b) => {
+      const distA = a.distance_km != null ? Number(a.distance_km) : 999999;
+      const distB = b.distance_km != null ? Number(b.distance_km) : 999999;
+      return distA - distB || Number(a.id || 0) - Number(b.id || 0);
+    });
+    displayItems = [pinnedItem, ...otherItems];
   }
-  const rows = items.slice(0, 250).map((item) =>
-    h(
-      "tr",
-      { class: "row-click", onclick: () => focusBoundary(item) },
+
+  if (!displayItems.length) {
+    return boundaryEmpty();
+  }
+
+  const hasDistance = nearbyActive || displayItems.some((it) => it.distance_km != null);
+  const headers = ["ID", "Project"];
+  if (hasDistance) headers.push("Distance (km)");
+  headers.push("District", "Taluka", "Type", "Status");
+
+  const rows = displayItems.slice(0, 250).map((item) => {
+    const cells = [
       h("td", { class: "mono", text: String(item.id ?? "—") }),
-      h("td", { class: "truncate", title: String(item.name || "—"), text: item.name || "—" }),
+      h("td", { class: "truncate", title: String(item.name || "—") },
+        item._isPinned ? h("span", { class: "tag-pinned", text: "Pinned" }) : null,
+        item.name || "—"
+      ),
+    ];
+    if (hasDistance) {
+      const distText = item.distance_km != null ? Number(item.distance_km).toFixed(1) : "—";
+      cells.push(h("td", { class: "mono", text: distText }));
+    }
+    cells.push(
       h("td", { text: item.district || "—" }),
       h("td", { text: item.taluka || "—" }),
       h("td", { text: item.project_type || "—" }),
       h("td", { text: item.project_status || "—" })
-    )
-  );
+    );
+
+    const isCurrentFocus = boundaryState.focus && String(boundaryState.focus.id) === String(item.id);
+    const rowClass = [
+      "row-click",
+      item._isPinned ? "row-pinned" : "",
+      isCurrentFocus ? "row-focused" : "",
+    ].filter(Boolean).join(" ");
+
+    return h(
+      "tr",
+      {
+        class: rowClass,
+        "data-id": String(item.id ?? ""),
+        onclick: () => focusBoundary(item, { recenterNearby: nearbyActive && !item._isPinned }),
+      },
+      ...cells
+    );
+  });
+
   return h(
     "div",
     { class: "stack" },
@@ -2129,22 +2336,12 @@ function boundaryTable(items) {
       h(
         "table",
         { class: "data-table compact" },
-        h(
-          "thead",
-          {},
-          h(
-            "tr",
-            {},
-            ...["ID", "Project", "District", "Taluka", "Type", "Status"].map((column) =>
-              h("th", { text: column })
-            )
-          )
-        ),
+        h("thead", {}, h("tr", {}, ...headers.map((column) => h("th", { text: column })))),
         h("tbody", {}, ...rows)
       )
     ),
-    items.length > 250
-      ? h("div", { class: "muted small mt-8", text: `Showing the first 250 of ${items.length.toLocaleString()} visible boundaries. Zoom to narrow the view.` })
+    displayItems.length > 250
+      ? h("div", { class: "muted small mt-8", text: `Showing the first 250 of ${displayItems.length.toLocaleString()} visible boundaries. Zoom to narrow the view.` })
       : null
   );
 }
@@ -2153,9 +2350,12 @@ function validateBoundaryInputs() {
   const lat = boundaryField("b-lat");
   const lon = boundaryField("b-lon");
   const distance = boundaryField("b-distance");
-  if ((lat || lon || distance) && !(lat && lon && distance)) {
-    setBoundaryStatus("Radius filtering requires latitude, longitude, and distance.");
-    return false;
+  if (lat || lon || distance) {
+    const dVal = Number(distance);
+    if (!lat || !lon || !distance || !Number.isFinite(dVal) || dVal <= 0) {
+      setBoundaryStatus("Radius requires latitude, longitude, and a positive distance.");
+      return false;
+    }
   }
   const size = Number(boundaryField("b-size") || "2000");
   if (!Number.isInteger(size) || size < 1 || size > 10000) {
@@ -2180,7 +2380,21 @@ function collectBoundaryParams(after) {
     if (value) params[key] = value;
   });
   const useView = document.getElementById("b-use-view");
-  params.bbox = useView && useView.checked ? boundaryState.lastBounds : boundaryField("b-bbox");
+  if (useView && useView.checked) {
+    if (!boundaryState.map) {
+      setBoundaryStatus("Map bounds unavailable. Uncheck current view or retry after the map loads.");
+      return null;
+    }
+    const bounds = boundaryState.map.getBounds();
+    const currentBounds = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()]
+      .map((value) => Number(value).toFixed(4))
+      .join(",");
+    boundaryState.lastBounds = currentBounds;
+    params.bbox = currentBounds;
+  } else {
+    const manualBbox = boundaryField("b-bbox");
+    if (manualBbox) params.bbox = manualBbox;
+  }
   const lat = boundaryField("b-lat");
   const lon = boundaryField("b-lon");
   const distance = boundaryField("b-distance");
@@ -2192,7 +2406,13 @@ function collectBoundaryParams(after) {
   const polygon = boundaryField("b-polygon");
   if (polygon) params.polygon = polygon;
   params.size = boundaryField("b-size") || "2000";
-  if (after !== null && after !== undefined) params.after = String(after);
+  if (after !== null && after !== undefined) {
+    if (params.q) {
+      params.after_cursor = String(after);
+    } else {
+      params.after = String(after);
+    }
+  }
   return params;
 }
 
@@ -2232,24 +2452,34 @@ async function loadBoundaries(options = {}) {
   boundaryState.controller = controller;
   const generation = ++boundaryState.generation;
   clearTimeout(boundaryState.moveTimer);
-  clearBoundaryGraphics();
-  setBoundaryStatus("Loading boundaries…");
+  const hadResults = boundaryState.visibleItems.size > 0;
+  const loadingLabel = hadResults ? "Refreshing results…" : "Loading results…";
+  setBoundaryRefreshing(true, hadResults ? "Refreshing previous results…" : "Loading boundaries…");
+  setBoundaryStatus(hadResults ? "Refreshing boundaries…" : "Loading boundaries…");
   const results = document.getElementById("boundaries-results");
-  if (results) results.replaceChildren(loading("Loading boundaries…"));
+  if (results) results.replaceChildren(boundarySkeleton(loadingLabel));
+  setBoundaryResultsBusy(true);
   let after = null;
   let pages = 0;
   let lastData = null;
   let lastMeta = null;
   let previousAfter = null;
+  let firstBatchRendered = false;
   const maxPages = 20;
   try {
     do {
       const params = collectBoundaryParams(after);
+      if (!params) return;
       renderBoundaryOverlay(params);
+      setBoundaryStatus(`Scanning batch ${pages + 1}…`);
       const res = await API.get("/api/projects/boundaries", params, { signal: controller.signal });
       if (generation !== boundaryState.generation) return;
       lastData = res.data || {};
       lastMeta = res.meta || {};
+      if (!firstBatchRendered) {
+        clearBoundaryGraphics();
+        firstBatchRendered = true;
+      }
       renderBoundaryGraphics(lastData);
       renderBoundaryMeta(lastData, lastMeta, pages + 1);
       pages += 1;
@@ -2264,36 +2494,114 @@ async function loadBoundaries(options = {}) {
       setBoundaryStatus(`Rendered ${boundaryState.visibleItems.size.toLocaleString()} project boundaries.`);
     }
     renderBoundaryResultsTable();
+    setBoundaryResultsBusy(false);
+    if (boundaryState.visibleItems.size === 0) setBoundaryDrawer(true);
+
+    const qValue = boundaryField("b-q");
+    if (qValue && !boundaryState.nearbyMode) {
+      const candidate = Array.from(boundaryState.visibleItems.values()).find(
+        (it) => Array.isArray(it.center) && it.center.length === 2 && Number.isFinite(it.center[0]) && Number.isFinite(it.center[1])
+      );
+      if (candidate) {
+        focusBoundary(candidate, { openPopup: true });
+      } else if (boundaryState.visibleItems.size > 0) {
+        setBoundaryStatus("Selected project has no usable centroid.");
+      }
+    } else if (!boundaryState.nearbyMode) {
+      boundaryState.focus = null;
+      updateNearbyButton();
+    }
   } catch (err) {
     if (err && err.code === "aborted") return;
     if (results) results.replaceChildren(errorCard("Boundary load failed", err));
     setBoundaryStatus("Boundary load failed. Check the filters and retry.");
+    setBoundaryDrawer(true);
   } finally {
-    if (generation === boundaryState.generation) boundaryState.controller = null;
+    if (generation === boundaryState.generation) {
+      boundaryState.controller = null;
+      setBoundaryResultsBusy(false);
+      setBoundaryRefreshing(false);
+    }
   }
 }
 
 function zoomToBoundaries() {
+  initBoundaryMap();
+
+  // Directly take the user to the map card
+  const mapEl = document.querySelector(".map-card") || document.getElementById("boundaries-map");
+  if (mapEl) {
+    mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   if (!boundaryState.map) return;
-  const layers = Array.from(boundaryState.layersById.values());
-  if (!layers.length) {
-    setBoundaryStatus("No boundaries loaded to zoom to.");
+  boundaryState.map.invalidateSize();
+
+  // If a single project is currently focused, zoom directly to it
+  if (boundaryState.focus && Array.isArray(boundaryState.focus.center)) {
+    ignoreBoundaryMove(() => {
+      boundaryState.map.setView(boundaryState.focus.center, 15);
+      if (boundaryState.focusMarker) boundaryState.focusMarker.openPopup();
+    });
+    setBoundaryStatus(`Zoomed to ${boundaryState.focus.name || "focused project"}.`);
     return;
   }
-  const group = L.featureGroup(layers);
-  ignoreBoundaryMove(() => boundaryState.map.fitBounds(group.getBounds(), { padding: [24, 24], maxZoom: 16 }));
+
+  const layers = Array.from(boundaryState.layersById.values());
+  if (boundaryState.focusMarker) {
+    layers.push(boundaryState.focusMarker);
+  }
+
+  if (!layers.length && !boundaryState.visibleItems.size) {
+    setBoundaryStatus("No boundaries loaded to zoom to. Click 'Load Boundaries' first.");
+    return;
+  }
+
+  try {
+    let bounds = null;
+    if (layers.length) {
+      const group = L.featureGroup(layers);
+      bounds = group.getBounds();
+    }
+    if ((!bounds || !bounds.isValid()) && boundaryState.visibleItems.size) {
+      const centers = Array.from(boundaryState.visibleItems.values())
+        .map((it) => it.center)
+        .filter((c) => Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]));
+      if (centers.length) {
+        bounds = L.latLngBounds(centers);
+      }
+    }
+
+    if (bounds && bounds.isValid()) {
+      ignoreBoundaryMove(() => {
+        boundaryState.map.fitBounds(bounds, { padding: [28, 28], maxZoom: 16 });
+      });
+      setBoundaryStatus(`Zoomed to ${boundaryState.visibleItems.size.toLocaleString()} visible boundaries.`);
+    } else if (boundaryState.visibleItems.size === 1) {
+      const single = Array.from(boundaryState.visibleItems.values())[0];
+      if (single && single.center) {
+        ignoreBoundaryMove(() => boundaryState.map.setView(single.center, 15));
+      }
+    }
+  } catch (err) {
+    console.error("zoomToBoundaries error:", err);
+  }
 }
 
 async function resetBoundaries() {
   if (boundaryState.controller) boundaryState.controller.abort();
   boundaryState.generation += 1;
   boundaryState.controller = null;
+  boundaryState.focus = null;
+  boundaryState.pinned = null;
+  boundaryState.nearbyMode = false;
+  updateNearbyButton();
   const form = document.getElementById("boundaries-form");
   if (form) form.reset();
   const size = document.getElementById("b-size");
   if (size) size.value = "2000";
   const useView = document.getElementById("b-use-view");
-  if (useView) useView.checked = true;
+  if (useView) useView.checked = false;
   updateBoundaryBboxField();
   clearBoundaryGraphics();
   const results = document.getElementById("boundaries-results");
@@ -2318,29 +2626,77 @@ function initBoundaries() {
   const reset = document.getElementById("boundaries-reset");
   const zoom = document.getElementById("boundaries-zoom");
   const useView = document.getElementById("b-use-view");
+  const showNearby = document.getElementById("b-show-nearby");
+  const drawerToggle = document.getElementById("boundaries-drawer-toggle");
+  const drawerClose = document.getElementById("boundaries-drawer-close");
+  const drawer = document.getElementById("boundaries-results-drawer");
+  const initialResults = document.getElementById("boundaries-results");
   if (form) {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      const qText = boundaryField("b-q");
+      if (qText) {
+        boundaryState.nearbyMode = false;
+        boundaryState.pinned = null;
+        const lat = document.getElementById("b-lat");
+        const lon = document.getElementById("b-lon");
+        const dist = document.getElementById("b-distance");
+        if (lat) lat.value = "";
+        if (lon) lon.value = "";
+        if (dist) dist.value = "";
+      }
       withBusy(load, "Loading…", () => loadBoundaries());
     });
   }
-  if (load) load.addEventListener("click", () => withBusy(load, "Loading…", () => loadBoundaries()));
+  if (load) {
+    load.addEventListener("click", () => {
+      const qText = boundaryField("b-q");
+      if (qText) {
+        boundaryState.nearbyMode = false;
+        boundaryState.pinned = null;
+      }
+      withBusy(load, "Loading…", () => loadBoundaries());
+    });
+  }
   if (reset) reset.addEventListener("click", () => withBusy(reset, "Resetting…", resetBoundaries));
   if (zoom) zoom.addEventListener("click", zoomToBoundaries);
   if (useView) {
     useView.addEventListener("change", () => {
-      updateBoundaryBboxField();
-      if (useView.checked) loadBoundaries({ auto: true });
+      if (useView.checked) {
+        updateBoundaryBboxField();
+      } else {
+        const bboxInput = document.getElementById("b-bbox");
+        if (bboxInput) bboxInput.value = "";
+        boundaryState.lastBounds = "";
+      }
     });
+  }
+  if (showNearby) {
+    showNearby.addEventListener("click", () => triggerNearbyMode());
+  }
+  if (drawerToggle) {
+    drawerToggle.addEventListener("click", () => {
+      const isOpen = drawer ? drawer.classList.contains("is-open") : false;
+      setBoundaryDrawer(!isOpen, { focus: true });
+    });
+  }
+  if (drawerClose) drawerClose.addEventListener("click", () => setBoundaryDrawer(false, { focus: true }));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && drawer && drawer.classList.contains("is-open")) {
+      setBoundaryDrawer(false, { focus: true });
+    }
+  });
+  if (initialResults && !initialResults.childElementCount) {
+    initialResults.replaceChildren(h("div", { class: "placeholder", text: "Choose filters, then load boundaries." }));
   }
 }
 
 /* ---------- bootstrap ---------- */
 function initProjects() {
   const searchBtn = document.getElementById("projects-search");
-  if (searchBtn) searchBtn.addEventListener("click", () => withBusy(searchBtn, "Searching…", runSearch));
+  if (searchBtn) searchBtn.addEventListener("click", () => withBusy(searchBtn, "SearchingÃ¢â‚¬Â¦", runSearch));
   const resetBtn = document.getElementById("projects-reset");
-  if (resetBtn) resetBtn.addEventListener("click", () => withBusy(resetBtn, "Resetting…", resetProjects));
+  if (resetBtn) resetBtn.addEventListener("click", () => withBusy(resetBtn, "ResettingÃ¢â‚¬Â¦", resetProjects));
   const form = document.getElementById("projects-form");
   if (form) form.addEventListener("submit", (event) => { event.preventDefault(); runSearch(); });
 
@@ -2350,7 +2706,7 @@ function initProjects() {
     const value = detailId ? detailId.value.trim() : "";
     if (value) loadDetail(value);
   };
-  if (detailLoad) detailLoad.addEventListener("click", () => withBusy(detailLoad, "Loading…", triggerDetail));
+  if (detailLoad) detailLoad.addEventListener("click", () => withBusy(detailLoad, "LoadingÃ¢â‚¬Â¦", triggerDetail));
   if (detailId) {
     detailId.addEventListener("keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); triggerDetail(); }
@@ -2409,21 +2765,21 @@ document.addEventListener("DOMContentLoaded", () => {
   initProjects();
   initBoundaries();
   const refresh = document.getElementById("refresh-dashboard");
-  if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "Refreshing…", () => loadDashboard(true)));
+  if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "RefreshingÃ¢â‚¬Â¦", () => loadDashboard(true)));
   const analyticsRefresh = document.getElementById("analytics-refresh");
-  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => withBusy(analyticsRefresh, "Refreshing…", () => loadAnalytics(true)));
+  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => withBusy(analyticsRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadAnalytics(true)));
   const qualityRefresh = document.getElementById("quality-refresh");
-  if (qualityRefresh) qualityRefresh.addEventListener("click", () => withBusy(qualityRefresh, "Refreshing…", () => loadQuality(true)));
+  if (qualityRefresh) qualityRefresh.addEventListener("click", () => withBusy(qualityRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadQuality(true)));
   const pipelineInput = document.getElementById("pipeline-source");
   if (pipelineInput) pipelineInput.addEventListener("input", () => validateJsonInput(pipelineInput, "pipeline-error", "Pipeline source JSON"));
   const pipelineRun = document.getElementById("pipeline-run");
-  if (pipelineRun) pipelineRun.addEventListener("click", () => withBusy(pipelineRun, "Simulating…", runPipeline));
+  if (pipelineRun) pipelineRun.addEventListener("click", () => withBusy(pipelineRun, "SimulatingÃ¢â‚¬Â¦", runPipeline));
 
   // Pagination & Export
   const pagGo = document.getElementById("pag-go");
-  if (pagGo) pagGo.addEventListener("click", () => withBusy(pagGo, "Loading…", pagFromSize));
+  if (pagGo) pagGo.addEventListener("click", () => withBusy(pagGo, "LoadingÃ¢â‚¬Â¦", pagFromSize));
   const pagNext = document.getElementById("pag-next");
-  if (pagNext) pagNext.addEventListener("click", () => withBusy(pagNext, "Loading…", pagSearchAfter));
+  if (pagNext) pagNext.addEventListener("click", () => withBusy(pagNext, "LoadingÃ¢â‚¬Â¦", pagSearchAfter));
   const pagCursorReset = document.getElementById("pag-cursor-reset");
   if (pagCursorReset) {
     pagCursorReset.addEventListener("click", () => {
@@ -2434,40 +2790,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   const paginationRefresh = document.getElementById("pagination-refresh");
   if (paginationRefresh) {
-    paginationRefresh.addEventListener("click", () => withBusy(paginationRefresh, "Refreshing…", () => {
+    paginationRefresh.addEventListener("click", () => withBusy(paginationRefresh, "RefreshingÃ¢â‚¬Â¦", () => {
       paginationLoaded = false;
       ensurePagination();
     }));
   }
   const pitOpenBtn = document.getElementById("pit-open");
-  if (pitOpenBtn) pitOpenBtn.addEventListener("click", () => withBusy(pitOpenBtn, "Opening…", pitOpen));
+  if (pitOpenBtn) pitOpenBtn.addEventListener("click", () => withBusy(pitOpenBtn, "OpeningÃ¢â‚¬Â¦", pitOpen));
   const pitNextBtn = document.getElementById("pit-next");
-  if (pitNextBtn) pitNextBtn.addEventListener("click", () => withBusy(pitNextBtn, "Loading…", pitNext));
+  if (pitNextBtn) pitNextBtn.addEventListener("click", () => withBusy(pitNextBtn, "LoadingÃ¢â‚¬Â¦", pitNext));
   const pitCloseBtn = document.getElementById("pit-close");
-  if (pitCloseBtn) pitCloseBtn.addEventListener("click", () => withBusy(pitCloseBtn, "Closing…", pitClose));
+  if (pitCloseBtn) pitCloseBtn.addEventListener("click", () => withBusy(pitCloseBtn, "ClosingÃ¢â‚¬Â¦", pitClose));
   const exportLimit = document.getElementById("export-limit");
   if (exportLimit) exportLimit.addEventListener("input", updateExportLink);
 
   // Mapping & Analyze
   const mappingRefresh = document.getElementById("mapping-refresh");
-  if (mappingRefresh) mappingRefresh.addEventListener("click", () => withBusy(mappingRefresh, "Refreshing…", () => loadMapping(true)));
+  if (mappingRefresh) mappingRefresh.addEventListener("click", () => withBusy(mappingRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadMapping(true)));
   const analyzeRun = document.getElementById("analyze-run");
-  if (analyzeRun) analyzeRun.addEventListener("click", () => withBusy(analyzeRun, "Analyzing…", runAnalyze));
+  if (analyzeRun) analyzeRun.addEventListener("click", () => withBusy(analyzeRun, "AnalyzingÃ¢â‚¬Â¦", runAnalyze));
 
   // Ops
   const opsRefresh = document.getElementById("ops-refresh");
-  if (opsRefresh) opsRefresh.addEventListener("click", () => withBusy(opsRefresh, "Refreshing…", () => loadOps(true)));
+  if (opsRefresh) opsRefresh.addEventListener("click", () => withBusy(opsRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadOps(true)));
 
   // Console
   const consoleRun = document.getElementById("console-run");
-  if (consoleRun) consoleRun.addEventListener("click", () => withBusy(consoleRun, "Running…", runConsole));
+  if (consoleRun) consoleRun.addEventListener("click", () => withBusy(consoleRun, "RunningÃ¢â‚¬Â¦", runConsole));
   const consoleInput = document.getElementById("console-input");
   if (consoleInput) {
     consoleInput.addEventListener("input", () => validateJsonInput(consoleInput, "console-error", "Query body JSON"));
     consoleInput.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        withBusy(consoleRun, "Running…", runConsole);
+        withBusy(consoleRun, "RunningÃ¢â‚¬Â¦", runConsole);
       }
     });
   }

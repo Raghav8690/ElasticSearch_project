@@ -77,6 +77,48 @@ SEARCH_TEXT_FIELDS = [
 ]
 QUERY_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
+# ---------------------------------------------------------------------------
+# Typo map for boundary search normalization (Contract 2)
+# ---------------------------------------------------------------------------
+TYPO_MAP: dict[str, str] = {
+    "recidency": "residency",
+    "recidancy": "residency",
+    "recidence": "residency",
+    "recidance": "residency",
+}
+
+_PUNCT_RE = re.compile(r"[^\w\s]", re.UNICODE)
+
+
+def normalize_boundary_query(q: str) -> tuple[str, str]:
+    """Return (normalized_q, phrase_prefix) for tiered boundary search.
+
+    - normalized_q: lowercased, punctuation-stripped, whitespace-collapsed,
+      typo tokens replaced per TYPO_MAP.
+    - phrase_prefix: derived from normalized_q per Contract 3 rules.
+    """
+    cleaned = _PUNCT_RE.sub(" ", q)
+    tokens = cleaned.lower().split()
+    corrected = [TYPO_MAP.get(tok, tok) for tok in tokens]
+    normalized = " ".join(corrected)
+    prefix = derive_phrase_prefix(normalized)
+    return normalized, prefix
+
+
+def derive_phrase_prefix(normalized_q: str) -> str:
+    """Derive phrase-prefix from normalized query (Contract 3).
+
+    Multi-token: keep all leading tokens, truncate the last token to 5 chars
+    (use full token when it is <= 5 chars already).
+    Single-token: return as-is.
+    """
+    tokens = normalized_q.split()
+    if len(tokens) <= 1:
+        return normalized_q
+    *leading, last = tokens
+    truncated = last[:5] if len(last) > 5 else last
+    return " ".join(leading + [truncated])
+
 
 def _invalid(message: str) -> AppError:
     return AppError("invalid_request", message, status_code=400)
@@ -413,12 +455,37 @@ def build_boundary_query(
     reg_no: str | None = None,
     size: int = 1000,
     after: int | None = None,
+    after_cursor: str | None = None,
 ) -> dict[str, Any]:
     if not isinstance(size, int) or size < 1 or size > MAX_BOUNDARY_SIZE:
         raise _invalid(f"size must be between 1 and {MAX_BOUNDARY_SIZE}.")
-    if after is not None and (not isinstance(after, int) or isinstance(after, bool) or after < 0):
-        raise _invalid("after must be a non-negative projectId.")
 
+    # --- cursor handling ---------------------------------------------------
+    # With q: caller supplies after_cursor as "[score, projectId]" JSON.
+    # Without q: caller supplies plain integer after (backward compat).
+    has_query = bool(q and q.strip())
+    search_after: list[Any] | None = None
+
+    if after_cursor is not None:
+        # score-cursor mode: parse "[score, projectId]" JSON array
+        try:
+            parsed = json.loads(after_cursor)
+        except (TypeError, ValueError):
+            raise _invalid("after_cursor must be a JSON array of [score, projectId].")
+        if (
+            not isinstance(parsed, list)
+            or not (1 <= len(parsed) <= 2)
+            or not all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in parsed)
+        ):
+            raise _invalid("after_cursor must be a JSON array of numeric sort values.")
+        search_after = parsed
+    elif after is not None:
+        # integer cursor mode (non-q backward compat)
+        if not isinstance(after, int) or isinstance(after, bool) or after < 0:
+            raise _invalid("after must be a non-negative projectId.")
+        search_after = [after]
+
+    # --- indexed filters ---------------------------------------------------
     filters: list[dict[str, Any]] = []
     if district:
         filters.append(_text_filter("district", district))
@@ -433,25 +500,94 @@ def build_boundary_query(
     if reg_no:
         filters.append(_text_filter("reg_no", reg_no))
 
-    bool_query: dict[str, Any] = {"filter": filters}
-    has_query = bool(q and q.strip())
+    # --- query construction -----------------------------------------------
     if has_query:
-        bool_query.update(_build_relevance_clause(q or ""))
-    query: dict[str, Any]
-    if filters or has_query:
-        query = {"bool": bool_query}
+        q_text = (q or "").strip()
+        normalized_q, phrase_prefix = normalize_boundary_query(q_text)
+
+        # Token rule: same logic as _build_relevance_clause
+        token_count = len(query_tokens(q_text))
+        minimum_tokens = 1 if token_count <= 1 else max(2, token_count - 1)
+
+        # Tier 1: exact/current group (boost 10)
+        exact_group: dict[str, Any] = {
+            "multi_match": {
+                "query": q_text,
+                "fields": SEARCH_TEXT_FIELDS,
+                "type": "cross_fields",
+                "operator": "or",
+                "minimum_should_match": minimum_tokens,
+                "lenient": True,
+                "boost": 10,
+            }
+        }
+
+        # Tier 2: fallback group (boost 1)
+        fallback_group: dict[str, Any] = {
+            "bool": {
+                "boost": 1,
+                "minimum_should_match": 1,
+                "should": [
+                    {
+                        "match": {
+                            "project_name": {
+                                "query": normalized_q,
+                                "operator": "and",
+                                "boost": 4,
+                            }
+                        }
+                    },
+                    {
+                        "match_phrase_prefix": {
+                            "project_name": {
+                                "query": phrase_prefix,
+                                "boost": 3,
+                            }
+                        }
+                    },
+                    {
+                        "match": {
+                            "project_name": {
+                                "query": q_text,
+                                "fuzziness": "AUTO",
+                                "prefix_length": 1,
+                                "max_expansions": 25,
+                                "operator": "and",
+                                "boost": 1,
+                            }
+                        }
+                    },
+                ],
+            }
+        }
+
+        bool_query: dict[str, Any] = {
+            "minimum_should_match": 1,
+            "should": [exact_group, fallback_group],
+        }
+        if filters:
+            bool_query["filter"] = filters
+
+        query: dict[str, Any] = {"bool": bool_query}
+        sort: list[Any] = [{"_score": "desc"}, {"projectId": "asc"}]
     else:
-        query = {"match_all": {}}
+        # Non-q: preserve original behaviour exactly
+        bool_query = {"filter": filters}
+        if filters:
+            query = {"bool": bool_query}
+        else:
+            query = {"match_all": {}}
+        sort = [{"projectId": "asc"}]
 
     body: dict[str, Any] = {
         "size": size,
         "track_total_hits": True,
         "_source": list(BOUNDARY_SOURCE),
         "query": query,
-        "sort": [{"projectId": "asc"}],
+        "sort": sort,
     }
-    if after is not None:
-        body["search_after"] = [after]
+    if search_after is not None:
+        body["search_after"] = search_after
     return body
 
 

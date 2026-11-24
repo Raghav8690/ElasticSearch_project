@@ -225,3 +225,54 @@ async def test_route_validation_edge_cases():
             r = await client.get("/api/projects/boundaries", params={"polygon": "22,72;22,72.1"})
             assert r.status_code == 400
             assert r.json()["error"]["code"] == "invalid_request"
+
+
+@pytest.mark.asyncio
+async def test_boundary_search_to_centroid_and_nearby():
+    async with lifespan(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            # 1. Typo query resolves projectId 573 (Shivalik Residences)
+            r = await client.get("/api/projects/boundaries", params={"q": "shivalik recidency", "size": 10})
+            assert r.status_code == 200
+            data = r.json()["data"]
+            items = data["features"] + data["markers"]
+            assert len(items) > 0
+            # Target project 573 should be among the top matches
+            found_573 = any(item.get("id") == 573 for item in items)
+            assert found_573, f"Expected projectId 573 in results: {[it.get('id') for it in items]}"
+            # Score must be exposed on items
+            assert any(item.get("score") is not None for item in items)
+
+            # 2. Score cursor pagination
+            next_after = data.get("next_after")
+            if next_after:
+                r_paged = await client.get(
+                    "/api/projects/boundaries",
+                    params={"q": "shivalik recidency", "size": 10, "after_cursor": str(next_after)},
+                )
+                assert r_paged.status_code == 200
+
+            # 3. Radius filter attaches distance_km and sorts by distance
+            r_radius = await client.get(
+                "/api/projects/boundaries",
+                params={"lat": "23.056223", "lon": "72.591239", "distance_km": "5", "size": 20},
+            )
+            assert r_radius.status_code == 200
+            radius_data = r_radius.json()["data"]
+            radius_items = radius_data["features"] + radius_data["markers"]
+            assert len(radius_items) > 0
+            for item in radius_items:
+                assert "distance_km" in item
+                assert item["distance_km"] <= 5.0
+            # Distances should be in ascending order
+            distances = [item["distance_km"] for item in radius_items]
+            assert distances == sorted(distances)
+
+            # 4. Incomplete radius filter returns 400
+            r_bad_radius = await client.get(
+                "/api/projects/boundaries",
+                params={"lat": "23.056223", "distance_km": "5"},
+            )
+            assert r_bad_radius.status_code == 400
+            assert r_bad_radius.json()["error"]["code"] == "invalid_request"
