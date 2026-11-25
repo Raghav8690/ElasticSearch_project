@@ -811,6 +811,8 @@ async def search_projects(
     sort: str | None = None,
     page: int = 1,
     size: int = 20,
+    query_type: str = "multi_match",
+    fuzzy: bool = False,
     rerank_address: bool | None = None,
     es: ESManager = Depends(get_es),
 ) -> dict[str, Any]:
@@ -835,6 +837,8 @@ async def search_projects(
         sort=sort,
         page=page,
         size=size,
+        query_type=query_type,
+        fuzzy=fuzzy,
     )
     start = time.perf_counter()
     has_query = bool(q and q.strip())
@@ -904,6 +908,7 @@ async def search_projects(
             "method": "POST",
             "path": f"/{settings.index_rera}/_search",
             "body": body,
+            "mode": {"query_type": query_type, "fuzzy": fuzzy},
             "rerank": rerank,
         },
     )

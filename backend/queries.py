@@ -65,6 +65,8 @@ ALLOWED_SORTS = {
     "scrape_status.documents",
 }
 
+PROJECT_QUERY_TYPES = frozenset({"multi_match", "match", "phrase", "term"})
+
 ADDRESS_SOURCE_PATH = "Project Profile.Project Overview.Project Address"
 SEARCH_TEXT_FIELDS = [
     "project_name^4",
@@ -155,6 +157,10 @@ def _text_filter(field: str, value: Any) -> dict[str, Any]:
     }
 
 
+def _fuzzy_params() -> dict[str, Any]:
+    return {"fuzziness": "AUTO", "prefix_length": 1, "max_expansions": 25}
+
+
 def extract_project_address(source: dict[str, Any] | None) -> str:
     profile = (source or {}).get("Project Profile") or {}
     if not isinstance(profile, dict):
@@ -205,7 +211,7 @@ def parse_search_sort(sort: str | None, has_query: bool) -> list[dict[str, Any]]
     return parse_sort(None)
 
 
-def _build_relevance_clause(q: str) -> dict[str, Any]:
+def _build_relevance_clause(q: str, *, fuzzy: bool = False) -> dict[str, Any]:
     text = q.strip()
     should: list[dict[str, Any]] = []
     if text.isdigit():
@@ -250,7 +256,54 @@ def _build_relevance_clause(q: str) -> dict[str, Any]:
             }
         }
     )
+    if fuzzy and not text.isdigit():
+        fuzzy_multi = {
+            "query": text,
+            "fields": ["project_name^2", "promoter_name^1"],
+            "type": "best_fields",
+            "operator": "or",
+            "minimum_should_match": minimum_tokens,
+            "lenient": True,
+            "boost": 2,
+        }
+        fuzzy_multi.update(_fuzzy_params())
+        should.append({"multi_match": fuzzy_multi})
     return {"should": should, "minimum_should_match": 1}
+
+
+def _build_project_mode_clause(q: str, query_type: str, fuzzy: bool) -> dict[str, Any]:
+    """Build one non-multi_match Project query mode."""
+    text = q.strip()
+    if query_type == "match":
+        spec: dict[str, Any] = {
+            "query": text,
+            "operator": "and",
+            "lenient": True,
+            "boost": 100,
+        }
+        if fuzzy:
+            spec.update(_fuzzy_params())
+        return {"match": {"project_name": spec}}
+
+    if query_type == "phrase":
+        return {"match_phrase": {"project_name": {"query": text, "slop": 0, "boost": 100}}}
+
+    if query_type == "term":
+        if text.isdigit():
+            return {"term": {"projectId": {"value": int(text), "boost": 100}}}
+        return {
+            "term": {
+                "project_name.keyword": {
+                    "value": text,
+                    "case_insensitive": True,
+                    "boost": 100,
+                }
+            }
+        }
+
+    raise _invalid(
+        "query_type must be one of: " + ", ".join(sorted(PROJECT_QUERY_TYPES)) + "."
+    )
 
 
 def validate_size(size: int, *, maximum: int = MAX_SIZE) -> int:
@@ -375,10 +428,17 @@ def build_project_search(
     sort: str | None = None,
     page: int = 1,
     size: int = 20,
+    query_type: str = "multi_match",
+    fuzzy: bool = False,
 ) -> dict[str, Any]:
     """Build the optimized project-search body. Empty filters are omitted."""
     validate_size(size)
     offset = validate_page(page, size)
+    if query_type not in PROJECT_QUERY_TYPES:
+        raise _invalid(
+            "query_type must be one of: " + ", ".join(sorted(PROJECT_QUERY_TYPES)) + "."
+        )
+    fuzzy = bool(fuzzy)
 
     filters: list[dict[str, Any]] = []
     if district:
@@ -421,7 +481,10 @@ def build_project_search(
     bool_query: dict[str, Any] = {"filter": filters}
     has_query = bool(q and q.strip())
     if has_query:
-        bool_query.update(_build_relevance_clause(q or ""))
+        if query_type == "multi_match":
+            bool_query.update(_build_relevance_clause(q or "", fuzzy=fuzzy))
+        else:
+            bool_query["must"] = [_build_project_mode_clause(q or "", query_type, fuzzy)]
 
     query: dict[str, Any]
     if filters or has_query:

@@ -7,7 +7,7 @@
   <title>Gujrat RERA Explorer</title>
   <link rel="icon" type="image/png" href="/static/logo.png?v=9" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=10" />
+  <link rel="stylesheet" href="/static/styles.css?v=12" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -59,7 +59,7 @@
       <div class="panel-head">
         <div>
           <h2>Projects</h2>
-          <p>Full-text search with filters, safe highlighting and live facet counts.</p>
+          <p>Compare two Elasticsearch query types on the same input. Read-only.</p>
         </div>
         <div class="head-actions">
           <button class="btn" type="button" id="projects-reset">Reset</button>
@@ -67,67 +67,78 @@
         </div>
       </div>
       <div class="projects-layout">
-        <aside class="facets">
-          <div class="facets-head">Facets</div>
-          <div id="facets-body"><div class="facets-loading">Loading facetsâ€¦</div></div>
-        </aside>
         <div class="projects-main">
           <form class="filters" id="projects-form">
             <div class="field field-wide">
               <label for="q">Search project / promoter</label>
               <div class="suggest-wrap">
-                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalikâ€¦" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
+                <input id="q" name="q" type="text" placeholder="e.g. residency, shivalik..." autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
                 <div class="suggest-box" id="suggest-box" role="listbox" hidden></div>
               </div>
             </div>
             <div class="field">
+              <label for="f-query-a">A query type</label>
+              <select id="f-query-a">
+                <option value="multi_match" selected>Multi-Match query</option>
+                <option value="match">Match query</option>
+                <option value="phrase">Exact phrase query</option>
+                <option value="term">Term (keyword) query</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-query-b">B query type</label>
+              <select id="f-query-b">
+                <option value="multi_match">Multi-Match query</option>
+                <option value="match" selected>Match query</option>
+                <option value="phrase">Exact phrase query</option>
+                <option value="term">Term (keyword) query</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-fuzzy">Fuzzy matching</label>
+              <select id="f-fuzzy"><option value="true" selected>on</option><option value="false">off</option></select>
+              <p class="field-hint">Fuzzy applies to multi_match and match. Phrase and term stay exact.</p>
+            </div>
+            <div class="field">
               <label for="f-rerank">Address rerank</label>
-              <select id="f-rerank"><option value="true">on</option><option value="false">off</option></select>
-            </div>
-            <div class="field"><label for="f-district">District</label><select id="f-district"></select></div>
-            <div class="field"><label for="f-taluka">Taluka</label><select id="f-taluka"></select></div>
-            <div class="field"><label for="f-type">Project type</label><select id="f-type"></select></div>
-            <div class="field"><label for="f-status">Status</label><select id="f-status"></select></div>
-            <div class="field"><label for="f-promoter">Promoter</label><select id="f-promoter"></select></div>
-            <div class="field"><label for="f-price">Exact price</label><select id="f-price"></select></div>
-            <div class="field"><label for="f-price-prefix">Price prefix</label><input id="f-price-prefix" type="text" placeholder="10.00" /></div>
-            <div class="field"><label for="f-start-from">Start date from</label><input id="f-start-from" type="date" /></div>
-            <div class="field"><label for="f-start-to">Start date to</label><input id="f-start-to" type="date" /></div>
-            <div class="field"><label for="f-end-from">End date from</label><input id="f-end-from" type="date" /></div>
-            <div class="field"><label for="f-end-to">End date to</label><input id="f-end-to" type="date" /></div>
-            <div class="field"><label for="f-min-docs">Min documents</label><input id="f-min-docs" type="number" min="0" /></div>
-            <div class="field"><label for="f-max-docs">Max documents</label><input id="f-max-docs" type="number" min="0" /></div>
-            <div class="field">
-              <label for="f-complete">Scrape complete</label>
-              <select id="f-complete"><option value="">Any</option><option value="true">true</option><option value="false">false</option></select>
-            </div>
-            <div class="field">
-              <label for="f-downloaded">Docs downloaded</label>
-              <select id="f-downloaded"><option value="">Any</option><option value="true">true</option><option value="false">false</option></select>
+              <select id="f-rerank"><option value="true" selected>on</option><option value="false">off</option></select>
+              <p class="field-hint">Turn address rerank off to compare raw query behavior.</p>
             </div>
             <div class="field">
               <label for="f-sort">Sort</label>
               <select id="f-sort">
-                <option value="">projectId (asc)</option>
-                <option value="project_name.keyword:asc">project name â†‘</option>
-                <option value="project_name.keyword:desc">project name â†“</option>
-                <option value="start_date:desc">start date â†“</option>
-                <option value="start_date:asc">start date â†‘</option>
-                <option value="scrape_status.documents:desc">documents â†“</option>
-                <option value="district:asc">district â†‘</option>
+                <option value="">Relevance / projectId (auto)</option>
+                <option value="project_name.keyword:asc">Project name A-Z</option>
+                <option value="project_name.keyword:desc">Project name Z-A</option>
+                <option value="start_date:desc">Start date newest</option>
+                <option value="start_date:asc">Start date oldest</option>
+                <option value="scrape_status.documents:desc">Documents most</option>
+                <option value="district:asc">District A-Z</option>
               </select>
             </div>
             <div class="field">
               <label for="f-size">Page size</label>
-              <select id="f-size"><option>20</option><option>50</option><option>100</option></select>
+              <select id="f-size"><option selected>20</option><option>50</option><option>100</option></select>
             </div>
           </form>
-      <div class="boundary-actions">
-        <button type="button" id="b-show-nearby" class="btn btn-nearby" disabled>Show nearby</button>
-      </div>
-          <div class="result-meta" id="projects-meta" aria-live="polite"></div>
-          <div id="projects-results" class="stack" aria-live="polite"></div>
-          <div id="projects-query"></div>
+          <div class="compare-grid" id="projects-compare">
+            <section class="compare-panel" aria-labelledby="compare-a-title">
+              <div class="compare-head">
+                <h3 id="compare-a-title">A: Relevance (multi_match)</h3>
+              </div>
+              <div class="result-meta" id="compare-a-meta" aria-live="polite"></div>
+              <div id="compare-a-results" class="stack" aria-live="polite"></div>
+              <div id="compare-a-query"></div>
+            </section>
+            <section class="compare-panel" aria-labelledby="compare-b-title">
+              <div class="compare-head">
+                <h3 id="compare-b-title">B: Analyzed match</h3>
+              </div>
+              <div class="result-meta" id="compare-b-meta" aria-live="polite"></div>
+              <div id="compare-b-results" class="stack" aria-live="polite"></div>
+              <div id="compare-b-query"></div>
+            </section>
+          </div>
         </div>
       </div>
     </section>
@@ -467,6 +478,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

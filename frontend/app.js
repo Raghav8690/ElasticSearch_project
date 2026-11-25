@@ -428,108 +428,57 @@ function fillSelect(id, buckets, placeholder) {
   el.replaceChildren(...options);
 }
 
-function renderFacets(facets) {
-  const body = document.getElementById("facets-body");
-  if (!body) return;
-  const groups = [
-    ["Districts", "districts", 20, "f-district"],
-    ["Project types", "project_types", 20, "f-type"],
-    ["Statuses", "project_statuses", 20, "f-status"],
-    ["Top promoters", "promoters", 10, "f-promoter"],
-    ["Prices", "prices", 10, "f-price"],
-  ];
-  body.replaceChildren(
-    ...groups.map(([title, key, limit, selectId]) => {
-      const buckets = ((facets[key] || {}).buckets || []).slice(0, limit);
-      return h(
-        "div",
-        { class: "facet-group" },
-        h("div", { class: "facet-title", text: title }),
-        h(
-          "ul",
-          { class: "facet-list" },
-          ...buckets.map((bucket) =>
-            h(
-              "li",
-              {},
-              h(
-                "button",
-                {
-                  class: "facet-item",
-                  type: "button",
-                  onclick: () => {
-                    const select = document.getElementById(selectId);
-                    if (select) select.value = bucket.key;
-                    runSearch();
-                  },
-                },
-                h("span", { class: "facet-key", text: bucket.key }),
-                h("span", { class: "facet-count", text: String(bucket.doc_count) })
-              )
-            )
-          )
-        )
-      );
-    })
-  );
+const PROJECT_QUERY_TYPE_LABELS = Object.freeze({
+  multi_match: "Relevance (multi_match)",
+  match: "Analyzed match",
+  phrase: "Exact phrase",
+  term: "Exact term (keyword)",
+});
+
+function projectQueryTypeLabel(value) {
+  return PROJECT_QUERY_TYPE_LABELS[value] || value || "multi_match";
 }
 
-async function loadFacets() {
-  const body = document.getElementById("facets-body");
-  if (body) body.replaceChildren(h("div", { class: "facets-loading", text: "Loading facetsÃ¢â‚¬Â¦" }));
-  try {
-    const res = await API.get("/api/projects/facets");
-    const facets = (res.data && res.data.facets) || {};
-    fillSelect("f-district", facets.districts && facets.districts.buckets, "All districts");
-    fillSelect("f-taluka", facets.talukas && facets.talukas.buckets, "All talukas");
-    fillSelect("f-type", facets.project_types && facets.project_types.buckets, "All types");
-    fillSelect("f-status", facets.project_statuses && facets.project_statuses.buckets, "All statuses");
-    fillSelect("f-promoter", facets.promoters && facets.promoters.buckets, "All promoters");
-    fillSelect("f-price", facets.prices && facets.prices.buckets, "Any price");
-    renderFacets(facets);
-  } catch (err) {
-    if (body) body.replaceChildren(errorCard("Facets unavailable", err));
-  }
+function projectCompareSide(side) {
+  const typeEl = document.getElementById(`f-query-${side}`);
+  const queryType = (typeEl && typeEl.value) || "multi_match";
+  return {
+    side,
+    queryType,
+    title: `${side.toUpperCase()}: ${projectQueryTypeLabel(queryType)}`,
+  };
 }
 
-function collectSearchParams() {
+function refreshCompareTitle(side) {
+  const title = document.getElementById(`compare-${side}-title`);
+  if (title) title.textContent = projectCompareSide(side).title;
+}
+
+function collectBaseSearchParams() {
   const val = (id) => {
     const el = document.getElementById(id);
     return el ? el.value.trim() : "";
   };
   const params = {};
-  const map = {
-    q: "q",
-    "f-district": "district",
-    "f-taluka": "taluka",
-    "f-type": "project_type",
-    "f-status": "project_status",
-    "f-promoter": "promoter",
-    "f-price": "price",
-    "f-price-prefix": "price_prefix",
-    "f-start-from": "start_from",
-    "f-start-to": "start_to",
-    "f-end-from": "end_from",
-    "f-end-to": "end_to",
-    "f-min-docs": "min_documents",
-    "f-max-docs": "max_documents",
-    "f-complete": "scrape_complete",
-    "f-downloaded": "docs_downloaded",
-    "f-sort": "sort",
-    "f-size": "size",
-    "f-rerank": "rerank_address",
-  };
-  Object.entries(map).forEach(([id, key]) => {
-    const value = val(id);
-    if (value !== "") params[key] = value;
-  });
-  if (!params.size) params.size = "20";
+  const q = val("q");
+  if (q !== "") params.q = q;
+  const fuzzy = val("f-fuzzy");
+  if (fuzzy !== "") params.fuzzy = fuzzy;
+  const rerank = val("f-rerank");
+  if (rerank !== "") params.rerank_address = rerank;
+  const sort = val("f-sort");
+  if (sort !== "") params.sort = sort;
+  params.size = val("f-size") || "20";
   return params;
+}
+
+function collectSearchParams(queryType) {
+  return Object.assign(collectBaseSearchParams(), { query_type: queryType });
 }
 
 function resultsTable(hits) {
   if (!hits || !hits.length) {
-    return h("div", { class: "placeholder", text: "No projects matched these filters." });
+    return h("div", { class: "placeholder", text: "No projects matched this query." });
   }
   const columns = ["ID", "Project", "District", "Taluka", "Type", "Status", "Price", "Start", "End", "Docs"];
   const rows = hits.map((hit) => {
@@ -563,31 +512,65 @@ function resultsTable(hits) {
   );
 }
 
-async function runSearch() {
-  const results = document.getElementById("projects-results");
-  const metaEl = document.getElementById("projects-meta");
-  const queryEl = document.getElementById("projects-query");
-  if (!results) return;
-  results.replaceChildren(loading("SearchingÃ¢â‚¬Â¦"));
-  if (metaEl) metaEl.replaceChildren();
-  if (queryEl) queryEl.replaceChildren();
-  try {
-    const res = await API.get("/api/projects/search", collectSearchParams());
-    const meta = res.meta || {};
-    const hits = (res.data && res.data.hits) || [];
-    if (metaEl) {
-      metaEl.replaceChildren(
-        h("span", { class: "meta-item" }, h("strong", { text: fmtTotal(meta.total) }), " matches"),
-        h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
-        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "Ã¢â‚¬â€")),
-        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "Ã¢â‚¬â€"))
-      );
-    }
-    results.replaceChildren(resultsTable(hits));
-    if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used));
-  } catch (err) {
-    results.replaceChildren(errorCard("Search failed", err));
+let compareRunId = 0;
+
+function comparePanelElements(side) {
+  return {
+    title: document.getElementById(`compare-${side}-title`),
+    meta: document.getElementById(`compare-${side}-meta`),
+    results: document.getElementById(`compare-${side}-results`),
+    query: document.getElementById(`compare-${side}-query`),
+  };
+}
+
+function prepareComparePanel(side) {
+  const els = comparePanelElements(side.side);
+  if (els.title) els.title.textContent = side.title;
+  if (els.results) els.results.replaceChildren(loading("Searching..."));
+  if (els.meta) els.meta.replaceChildren();
+  if (els.query) els.query.replaceChildren();
+}
+
+function renderCompareResponse(side, res) {
+  const els = comparePanelElements(side.side);
+  const meta = res.meta || {};
+  const hits = (res.data && res.data.hits) || [];
+  if (els.meta) {
+    els.meta.replaceChildren(
+      h("span", { class: "meta-item" }, h("strong", { text: fmtTotal(meta.total) }), " matches"),
+      h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
+      h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "n/a")),
+      h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "n/a"))
+    );
   }
+  if (els.results) els.results.replaceChildren(resultsTable(hits));
+  if (els.query) {
+    els.query.replaceChildren(
+      queryDetails(meta.query_used, `${side.side.toUpperCase()} query used`)
+    );
+  }
+}
+
+function renderCompareError(side, err) {
+  const els = comparePanelElements(side.side);
+  if (els.results) {
+    els.results.replaceChildren(errorCard(`${side.side.toUpperCase()} search failed`, err));
+  }
+}
+
+async function runComparison() {
+  const sides = [projectCompareSide("a"), projectCompareSide("b")];
+  sides.forEach(prepareComparePanel);
+  const runId = ++compareRunId;
+  const results = await Promise.allSettled(
+    sides.map((side) => API.get("/api/projects/search", collectSearchParams(side.queryType)))
+  );
+  if (runId !== compareRunId) return;
+  results.forEach((result, index) => {
+    const side = sides[index];
+    if (result.status === "fulfilled") renderCompareResponse(side, result.value);
+    else renderCompareError(side, result.reason);
+  });
 }
 
 function resetProjects() {
@@ -595,14 +578,13 @@ function resetProjects() {
   if (form) form.reset();
   const size = document.getElementById("f-size");
   if (size) size.value = "20";
-  runSearch();
+  runComparison();
 }
 
 function ensureProjects() {
   if (projectsLoaded) return;
   projectsLoaded = true;
-  loadFacets();
-  runSearch();
+  runComparison();
 }
 
 function initSuggest() {
@@ -640,7 +622,7 @@ function initSuggest() {
     input.value = item.label || item.project_name || "";
     close();
     if (id !== undefined && id !== null && id !== "") openDetail(id);
-    else runSearch();
+    else runComparison();
   };
 
   input.addEventListener("input", () => {
@@ -2722,11 +2704,15 @@ function initBoundaries() {
 /* ---------- bootstrap ---------- */
 function initProjects() {
   const searchBtn = document.getElementById("projects-search");
-  if (searchBtn) searchBtn.addEventListener("click", () => withBusy(searchBtn, "SearchingÃ¢â‚¬Â¦", runSearch));
+  if (searchBtn) searchBtn.addEventListener("click", () => withBusy(searchBtn, "Searching...", runComparison));
   const resetBtn = document.getElementById("projects-reset");
-  if (resetBtn) resetBtn.addEventListener("click", () => withBusy(resetBtn, "ResettingÃ¢â‚¬Â¦", resetProjects));
+  if (resetBtn) resetBtn.addEventListener("click", () => withBusy(resetBtn, "Resetting...", resetProjects));
   const form = document.getElementById("projects-form");
-  if (form) form.addEventListener("submit", (event) => { event.preventDefault(); runSearch(); });
+  if (form) form.addEventListener("submit", (event) => { event.preventDefault(); runComparison(); });
+  ["a", "b"].forEach((side) => {
+    const select = document.getElementById(`f-query-${side}`);
+    if (select) select.addEventListener("change", () => refreshCompareTitle(side));
+  });
 
   const detailId = document.getElementById("detail-id");
   const detailLoad = document.getElementById("detail-load");

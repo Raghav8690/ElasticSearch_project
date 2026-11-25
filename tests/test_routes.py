@@ -68,6 +68,30 @@ async def test_all_26_routes_and_root():
             assert rerank["enabled"] is False
             assert "cache_age_seconds" in rerank
 
+            r = await client.get(
+                "/api/projects/search",
+                params={
+                    "q": "shivalik",
+                    "size": 5,
+                    "query_type": "match",
+                    "fuzzy": "true",
+                    "rerank_address": "false",
+                },
+            )
+            assert r.status_code == 200
+            mode = r.json()["meta"]["query_used"]["mode"]
+            assert mode == {"query_type": "match", "fuzzy": True}
+            body = r.json()["meta"]["query_used"]["body"]
+            match = body["query"]["bool"]["must"][0]["match"]["project_name"]
+            assert match["fuzziness"] == "AUTO"
+
+            r = await client.get(
+                "/api/projects/search",
+                params={"q": "x", "query_type": "wildcard"},
+            )
+            assert r.status_code == 400
+            assert r.json()["error"]["code"] == "invalid_request"
+
             # 10. Suggest
             r = await client.get("/api/projects/suggest?q=shiva")
             assert r.status_code == 200

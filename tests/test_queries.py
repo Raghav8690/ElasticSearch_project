@@ -209,6 +209,94 @@ def test_build_project_search_filters_and_relevance():
     assert hl["post_tags"] == [HIGHLIGHT_POST]
 
 
+def test_build_project_search_match_query_type():
+    body = build_project_search(q="residency", query_type="match")
+    clause = body["query"]["bool"]["must"][0]["match"]["project_name"]
+    assert clause["query"] == "residency"
+    assert clause["operator"] == "and"
+    assert clause["lenient"] is True
+    assert clause["boost"] == 100
+    assert "fuzziness" not in clause
+
+
+def test_build_project_search_phrase_query_type():
+    body = build_project_search(q="shivalik residences", query_type="phrase")
+    clause = body["query"]["bool"]["must"][0]["match_phrase"]["project_name"]
+    assert clause["query"] == "shivalik residences"
+    assert clause["slop"] == 0
+    assert clause["boost"] == 100
+    assert "fuzziness" not in clause
+
+
+def test_build_project_search_term_query_type():
+    body = build_project_search(q="Shivalik Residences", query_type="term")
+    clause = body["query"]["bool"]["must"][0]["term"]["project_name.keyword"]
+    assert clause["value"] == "Shivalik Residences"
+    assert clause["case_insensitive"] is True
+    assert clause["boost"] == 100
+    assert "fuzziness" not in clause
+
+
+def test_build_project_search_term_numeric_uses_project_id():
+    body = build_project_search(q="573", query_type="term")
+    clause = body["query"]["bool"]["must"][0]["term"]["projectId"]
+    assert clause == {"value": 573, "boost": 100}
+
+
+def test_build_project_search_fuzzy_multi_match():
+    body = build_project_search(q="shivalik recidency", query_type="multi_match", fuzzy=True)
+    should = body["query"]["bool"]["should"]
+    exact = next(
+        clause["multi_match"]
+        for clause in should
+        if "multi_match" in clause and "fuzziness" not in clause["multi_match"]
+    )
+    assert exact["type"] == "cross_fields"
+    fuzzy = next(
+        clause["multi_match"]
+        for clause in should
+        if clause.get("multi_match", {}).get("fuzziness") == "AUTO"
+    )
+    assert fuzzy["type"] == "best_fields"
+    assert fuzzy["fields"] == ["project_name^2", "promoter_name^1"]
+    assert fuzzy["minimum_should_match"] == 2
+    assert fuzzy["prefix_length"] == 1
+    assert fuzzy["max_expansions"] == 25
+
+
+def test_build_project_search_fuzzy_multi_match_skips_numeric_query():
+    body = build_project_search(q="573", query_type="multi_match", fuzzy=True)
+    assert "fuzziness" not in str(body)
+
+
+def test_build_project_search_fuzzy_match():
+    body = build_project_search(q="shivalik recidency", query_type="match", fuzzy=True)
+    clause = body["query"]["bool"]["must"][0]["match"]["project_name"]
+    assert clause["fuzziness"] == "AUTO"
+    assert clause["prefix_length"] == 1
+    assert clause["max_expansions"] == 25
+
+
+@pytest.mark.parametrize("query_type", ["phrase", "term"])
+def test_build_project_search_fuzzy_ignored_for_exact_modes(query_type):
+    body = build_project_search(q="Shivalik Residences", query_type=query_type, fuzzy=True)
+    assert "fuzziness" not in str(body)
+
+
+def test_build_project_search_rejects_invalid_query_type():
+    with pytest.raises(AppError) as exc:
+        build_project_search(q="residency", query_type="wildcard")
+    assert exc.value.code == "invalid_request"
+    assert "query_type" in exc.value.message
+
+
+@pytest.mark.parametrize("query_type", ["match", "phrase", "term"])
+def test_build_project_search_empty_q_ignores_query_type(query_type):
+    body = build_project_search(query_type=query_type, fuzzy=True)
+    assert body["query"] == {"match_all": {}}
+    assert body["sort"] == [{"projectId": "asc"}]
+
+
 def test_build_suggest():
     body = build_suggest("shiva", size=5)
     assert body["size"] == 5
