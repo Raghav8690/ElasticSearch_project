@@ -1,8 +1,9 @@
 """FastAPI application factory, lifespan, error handlers and static mount."""
 from __future__ import annotations
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -15,7 +16,7 @@ from elastic_transport import ConnectionTimeout
 
 from .config import settings
 from .es_client import ESManager
-from .routes import router
+from .routes import _ensure_address_index, router
 from .schemas import AppError, error_payload
 
 logger = logging.getLogger("rera")
@@ -25,17 +26,34 @@ logging.getLogger("elastic_transport.transport").setLevel(logging.WARNING)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
+async def _warm_address_cache(es: ESManager) -> None:
+    try:
+        addresses = await _ensure_address_index(es)
+        logger.info("Address cache warm-up finished with %d entries", len(addresses))
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - warm-up must never fail startup
+        logger.exception("Address cache warm-up failed; continuing without rerank cache")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     es = ESManager(settings)
     app.state.es = es
+    warm_task: asyncio.Task | None = None
     try:
         await es.discover()
     except Exception:  # noqa: BLE001 - startup must survive a down cluster
         logger.exception("Startup discovery failed; continuing in degraded mode")
+    if settings.warm_address_cache_on_startup:
+        warm_task = asyncio.create_task(_warm_address_cache(es))
     try:
         yield
     finally:
+        if warm_task is not None and not warm_task.done():
+            warm_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warm_task
         await es.close()
 
 

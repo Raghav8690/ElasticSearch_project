@@ -88,3 +88,12 @@ def test_validate_console_body_disabled_object_source():
     with pytest.raises(AppError) as exc:
         _validate_console_body({"_source": ["projectId", "Project Profile"]})
     assert "disabled object" in exc.value.message.lower()
+
+
+def test_validate_console_body_profile_boolean():
+    _validate_console_body({"query": {"match_all": {}}, "profile": True})
+    _validate_console_body({"query": {"match_all": {}}, "profile": False})
+
+    with pytest.raises(AppError) as exc:
+        _validate_console_body({"query": {"match_all": {}}, "profile": "true"})
+    assert "profile must be a boolean" in exc.value.message

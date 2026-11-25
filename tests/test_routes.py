@@ -59,6 +59,15 @@ async def test_all_26_routes_and_root():
             assert r.status_code == 200
             assert "hits" in r.json()["data"]
 
+            r = await client.get(
+                "/api/projects/search",
+                params={"q": "shivalik", "size": 5, "rerank_address": "false"},
+            )
+            assert r.status_code == 200
+            rerank = r.json()["meta"]["query_used"]["rerank"]["address"]
+            assert rerank["enabled"] is False
+            assert "cache_age_seconds" in rerank
+
             # 10. Suggest
             r = await client.get("/api/projects/suggest?q=shiva")
             assert r.status_code == 200
@@ -157,6 +166,10 @@ async def test_all_26_routes_and_root():
             # 24. Ops Nodes
             r = await client.get("/api/ops/nodes")
             assert r.status_code == 200
+            node = r.json()["data"]["nodes"][0]
+            assert "search_rejected" in node
+            assert "query_cache_hit_count" in node
+            assert "request_cache_hit_count" in node
 
             # 25. Ops Shards
             r = await client.get("/api/ops/shards")
@@ -165,6 +178,13 @@ async def test_all_26_routes_and_root():
             # 26. Query Console
             r = await client.post("/api/query/gujrat_rera_data", json={"query": {"match_all": {}}, "size": 1})
             assert r.status_code == 200
+
+            r = await client.post(
+                "/api/query/gujrat_rera_data",
+                json={"query": {"match_all": {}}, "size": 1, "profile": True},
+            )
+            assert r.status_code == 200
+            assert "profile" in r.json()["data"]
 
 
 @pytest.mark.asyncio

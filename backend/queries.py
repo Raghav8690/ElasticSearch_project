@@ -432,7 +432,7 @@ def build_project_search(
     return {
         "size": size,
         "from": offset,
-        "track_total_hits": True,
+        "track_total_hits": 10000,
         "_source": list(CORE_FIELDS),
         "query": query,
         "sort": parse_search_sort(sort, has_query),
@@ -581,7 +581,7 @@ def build_boundary_query(
 
     body: dict[str, Any] = {
         "size": size,
-        "track_total_hits": True,
+        "track_total_hits": 10000,
         "_source": list(BOUNDARY_SOURCE),
         "query": query,
         "sort": sort,

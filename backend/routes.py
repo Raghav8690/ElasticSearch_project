@@ -89,6 +89,24 @@ def _address_cache_is_fresh() -> bool:
     return bool(_address_cache["addresses"]) and (time.monotonic() - loaded_at) < ADDRESS_CACHE_TTL_SECONDS
 
 
+def _address_cache_meta() -> dict[str, Any]:
+    loaded_at = float(_address_cache["loaded_at"] or 0.0)
+    age = round(time.monotonic() - loaded_at, 3) if loaded_at else None
+    if _address_cache["error"]:
+        status = "unavailable"
+    elif _address_cache_is_fresh():
+        status = "ready"
+    elif loaded_at:
+        status = "stale"
+    else:
+        status = "cold"
+    return {
+        "status": status,
+        "cache_age_seconds": age,
+        "error": _address_cache["error"],
+    }
+
+
 async def _ensure_address_index(es: ESManager) -> dict[str, str]:
     if _address_cache_is_fresh():
         return dict(_address_cache["addresses"])
@@ -793,6 +811,7 @@ async def search_projects(
     sort: str | None = None,
     page: int = 1,
     size: int = 20,
+    rerank_address: bool | None = None,
     es: ESManager = Depends(get_es),
 ) -> dict[str, Any]:
     body = build_project_search(
@@ -819,7 +838,7 @@ async def search_projects(
     )
     start = time.perf_counter()
     has_query = bool(q and q.strip())
-    use_address_rerank = has_query and not sort
+    use_address_rerank = has_query and not sort and rerank_address is not False
     es_from = 0 if use_address_rerank else body["from"]
     es_size = min(1000, max(100, body["from"] + body["size"] + 100)) if use_address_rerank else body["size"]
     resp = (
@@ -836,7 +855,7 @@ async def search_projects(
     ).body
     raw_hits = (resp.get("hits") or {}).get("hits") or []
     total = ((resp.get("hits") or {}).get("total") or {}).get("value")
-    rerank: dict[str, Any] = {"address": {"enabled": use_address_rerank}}
+    rerank: dict[str, Any] = {"address": {"enabled": use_address_rerank, **_address_cache_meta()}}
 
     if use_address_rerank:
         addresses = await _ensure_address_index(es)
@@ -844,11 +863,10 @@ async def search_projects(
         candidate_hits = await _fetch_candidate_hits(es, candidate_ids, body["_source"])
         rerank["address"] = {
             "enabled": True,
-            "status": "unavailable" if _address_cache["error"] else "ready",
+            **_address_cache_meta(),
             "indexed_addresses": len(addresses),
             "candidates": len(candidate_ids),
             "matches": candidate_total,
-            "error": _address_cache["error"],
         }
         merged: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -1039,6 +1057,9 @@ async def ops_nodes(es: ESManager = Depends(get_es)) -> dict[str, Any]:
         indices_stat = n.get("indices") or {}
         docs_stat = indices_stat.get("docs") or {}
         store_stat = indices_stat.get("store") or {}
+        search_pool = (n.get("thread_pool") or {}).get("search") or {}
+        query_cache = indices_stat.get("query_cache") or {}
+        request_cache = indices_stat.get("request_cache") or {}
         nodes_list.append({
             "id": node_id,
             "name": n.get("name"),
@@ -1049,6 +1070,15 @@ async def ops_nodes(es: ESManager = Depends(get_es)) -> dict[str, Any]:
             "cpu_percent": os_cpu.get("percent"),
             "docs": docs_stat.get("count"),
             "store": store_stat.get("size_in_bytes"),
+            "search_active": search_pool.get("active"),
+            "search_queue": search_pool.get("queue"),
+            "search_rejected": search_pool.get("rejected"),
+            "search_completed": search_pool.get("completed"),
+            "query_cache_hit_count": query_cache.get("hit_count"),
+            "query_cache_miss_count": query_cache.get("miss_count"),
+            "query_cache_evictions": query_cache.get("evictions"),
+            "request_cache_hit_count": request_cache.get("hit_count"),
+            "request_cache_miss_count": request_cache.get("miss_count"),
         })
     return envelope(
         {"nodes": nodes_list},
@@ -1078,7 +1108,7 @@ async def ops_shards(es: ESManager = Depends(get_es)) -> dict[str, Any]:
 # -- guarded console -------------------------------------------------------
 ALLOWED_CONSOLE_KEYS = {
     "query", "aggs", "size", "from", "sort", "_source",
-    "track_total_hits", "collapse", "highlight", "post_filter"
+    "track_total_hits", "collapse", "highlight", "post_filter", "profile"
 }
 FORBIDDEN_KEY_NAMES = {
     "script", "script_fields", "runtime_mappings", "regexp"
@@ -1108,6 +1138,9 @@ def _validate_console_body(body: dict[str, Any]) -> None:
     for k in body:
         if k not in ALLOWED_CONSOLE_KEYS:
             raise AppError("invalid_request", f"Key '{k}' is not allowed in console queries.")
+
+    if "profile" in body and not isinstance(body["profile"], bool):
+        raise AppError("invalid_request", "profile must be a boolean.")
 
     size = body.get("size", 10)
     from_ = body.get("from", 0)

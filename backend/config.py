@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     index_rera: str = "gujrat_rera_data"
     pipeline_id: str = "gujrat_normalize_pipeline"
     allow_writes: bool = False
+    warm_address_cache_on_startup: bool = True
 
-    request_timeout_seconds: float = 20
     pit_keep_alive: str = "2m"
     pit_ttl_seconds: float = 90
 

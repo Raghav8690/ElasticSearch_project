@@ -517,6 +517,7 @@ function collectSearchParams() {
     "f-downloaded": "docs_downloaded",
     "f-sort": "sort",
     "f-size": "size",
+    "f-rerank": "rerank_address",
   };
   Object.entries(map).forEach(([id, key]) => {
     const value = val(id);
@@ -576,7 +577,7 @@ async function runSearch() {
     const hits = (res.data && res.data.hits) || [];
     if (metaEl) {
       metaEl.replaceChildren(
-        h("span", { class: "meta-item" }, h("strong", { text: Number(meta.total || 0).toLocaleString() }), " matches"),
+        h("span", { class: "meta-item" }, h("strong", { text: fmtTotal(meta.total) }), " matches"),
         h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
         h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "Ã¢â‚¬â€")),
         h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "Ã¢â‚¬â€"))
@@ -1074,6 +1075,20 @@ function boolCount(buckets, truthy) {
 
 function fmtNumber(value) {
   return value == null ? "Ã¢â‚¬â€" : Number(value).toLocaleString();
+}
+
+const TOTAL_HIT_CAP = 10000;
+
+function fmtTotal(value) {
+  const numeric = Number(value || 0);
+  return numeric >= TOTAL_HIT_CAP ? `${TOTAL_HIT_CAP.toLocaleString()}+` : numeric.toLocaleString();
+}
+
+function fmtHitRate(hits, misses) {
+  const hitCount = Number(hits || 0);
+  const missCount = Number(misses || 0);
+  const total = hitCount + missCount;
+  return total ? `${((hitCount / total) * 100).toFixed(1)}%` : "—";
 }
 
 function renderAnalytics(root, ctx) {
@@ -1767,7 +1782,7 @@ async function loadOps(force = false) {
                 h(
                   "thead",
                   {},
-                  h("tr", {}, h("th", { text: "Name" }), h("th", { text: "Roles" }), h("th", { text: "Heap %" }), h("th", { text: "CPU %" }), h("th", { text: "Docs count" }), h("th", { text: "Store size" }))
+                  h("tr", {}, h("th", { text: "Name" }), h("th", { text: "Roles" }), h("th", { text: "Heap %" }), h("th", { text: "CPU %" }), h("th", { text: "Docs count" }), h("th", { text: "Store size" }), h("th", { text: "Search q" }), h("th", { text: "Rejected" }), h("th", { text: "Query hit" }), h("th", { text: "Request hit" }))
                 ),
                 h(
                   "tbody",
@@ -1781,7 +1796,11 @@ async function loadOps(force = false) {
                       h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "Ã¢â‚¬â€" }),
                       h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "Ã¢â‚¬â€" }),
                       h("td", { text: fmtNumber(n.docs) }),
-                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€" })
+                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€" }),
+                      h("td", { text: fmtNumber(n.search_queue) }),
+                      h("td", { text: fmtNumber(n.search_rejected) }),
+                      h("td", { text: fmtHitRate(n.query_cache_hit_count, n.query_cache_miss_count) }),
+                      h("td", { text: fmtHitRate(n.request_cache_hit_count, n.request_cache_miss_count) })
                     )
                   )
                 )
@@ -1874,6 +1893,7 @@ async function runConsole() {
     }
 
     results.replaceChildren(queryDetails(data, `Query Result (${hits.length} hits)`));
+    if (data.profile) results.append(queryDetails(data.profile, "Profile timings"));
 
     if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "Executed query"));
   } catch (err) {
@@ -2433,7 +2453,7 @@ function renderBoundaryMeta(data, meta, pages) {
   if (metaEl) {
     metaEl.replaceChildren(
       h("span", {}, h("strong", { text: items.length.toLocaleString() }), " visible"),
-      h("span", { text: `scanned ${Number(data.loaded || 0).toLocaleString()} of ${Number(meta.total || 0).toLocaleString()}` }),
+      h("span", { text: `scanned ${Number(data.loaded || 0).toLocaleString()} of ${fmtTotal(meta.total)}` }),
       h("span", { text: `skipped ${Number(skipped.degenerate || 0).toLocaleString()} degenerate / ${Number(skipped.unparseable || 0).toLocaleString()} unparseable` }),
       h("span", { text: `batches ${pages}` }),
       h("span", { text: queryUsed.cache_hit ? "cache hit" : "ES scan" }),

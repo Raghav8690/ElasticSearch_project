@@ -7,7 +7,7 @@
   <title>Gujrat RERA Explorer</title>
   <link rel="icon" type="image/png" href="/static/logo.png?v=9" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=9" />
+  <link rel="stylesheet" href="/static/styles.css?v=10" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -79,6 +79,10 @@
                 <input id="q" name="q" type="text" placeholder="e.g. residency, shivalikâ€¦" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest-box" />
                 <div class="suggest-box" id="suggest-box" role="listbox" hidden></div>
               </div>
+            </div>
+            <div class="field">
+              <label for="f-rerank">Address rerank</label>
+              <select id="f-rerank"><option value="true">on</option><option value="false">off</option></select>
             </div>
             <div class="field"><label for="f-district">District</label><select id="f-district"></select></div>
             <div class="field"><label for="f-taluka">Taluka</label><select id="f-taluka"></select></div>
@@ -463,6 +467,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/app.js?v=10"></script>
 </body>
 </html>

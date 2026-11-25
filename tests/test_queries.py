@@ -95,6 +95,7 @@ def test_build_project_search_empty():
     body = build_project_search()
     assert body["size"] == 20
     assert body["from"] == 0
+    assert body["track_total_hits"] == 10000
     assert body["_source"] == CORE_FIELDS
     assert body["query"] == {"match_all": {}}
     assert "must" not in body["query"].get("bool", {})
@@ -606,11 +607,11 @@ class TestBoundaryQueryScoreExposure:
 
     def test_query_has_track_total_hits(self):
         body = build_boundary_query(q="residency", size=100)
-        assert body.get("track_total_hits") is True
+        assert body.get("track_total_hits") == 10000
 
     def test_no_q_still_has_track_total_hits(self):
         body = build_boundary_query(size=100)
-        assert body.get("track_total_hits") is True
+        assert body.get("track_total_hits") == 10000
 
 
 # --- Existing boundary test updated for new after_cursor param -------------
