@@ -7,7 +7,7 @@
   <title>Gujrat RERA Explorer</title>
   <link rel="icon" type="image/png" href="/static/logo.png?v=9" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="/static/styles.css?v=12" />
+  <link rel="stylesheet" href="/static/styles.css?v=13" />
 </head>
 <body>
   <div class="site-header-wrap">
@@ -22,7 +22,7 @@
       <div class="header-meta">
         <span class="pill pill-host" id="es-host" title="Elasticsearch host">ES host</span>
         <span class="pill pill-status is-unknown" id="cluster-pill" aria-live="polite">
-          <span class="dot"></span><span class="pill-label">checkingâ€¦</span>
+          <span class="dot"></span><span class="pill-label">checking…</span>
         </span>
       </div>
     </header>
@@ -46,12 +46,12 @@
       <div class="panel-head">
         <div>
           <h2>Dashboard</h2>
-          <p>Live cluster and index facts, verified at runtime â€” never hard-coded.</p>
+          <p>Live cluster and index facts, verified at runtime — never hard-coded.</p>
         </div>
         <button class="btn" type="button" id="refresh-dashboard">Refresh</button>
       </div>
       <div id="dashboard-body" class="stack">
-        <div class="loading">Loading cluster factsâ€¦</div>
+        <div class="loading">Loading cluster facts…</div>
       </div>
     </section>
 
@@ -198,7 +198,7 @@
           <p>
             Dates are stored as <code>dd-MM-yyyy</code> keyword strings with an explicit
             <code>format</code> on the date fields. A value that does not match the pattern is not
-            silently coerced â€” date range queries and histograms simply exclude it. Treat the
+            silently coerced — date range queries and histograms simply exclude it. Treat the
             histograms as coverage of well-formed dates, not a completeness guarantee.
           </p>
         </div>
@@ -334,7 +334,7 @@
       <div class="panel-head">
         <div>
           <h2>Ops</h2>
-          <p>Cluster health, node metrics, shard allocation, and the P13 administrative runbook.</p>
+          <p>Cluster health, node metrics, shard allocation, search slow log, and the P13 administrative runbook.</p>
         </div>
         <button class="btn" type="button" id="ops-refresh">Refresh</button>
       </div>
@@ -342,13 +342,14 @@
         <div id="ops-health"></div>
         <div id="ops-nodes"></div>
         <div id="ops-shards"></div>
+        <div id="ops-slowlog"></div>
         <div class="card note">
           <div class="card-head"><h3>P13 Administrative Runbook (Documented Only)</h3></div>
           <p>The following operations require cluster admin privileges and are intentionally not exposed by this read-only application:</p>
           <ul class="bullet-list">
             <li><strong>Security &amp; Users:</strong> Create / manage native users, roles, and role mappings (e.g. <code>POST /_security/user/...</code>).</li>
             <li><strong>API Keys:</strong> Generate, invalidate, and rotate cluster/index API keys (<code>POST /_security/api_key</code>).</li>
-            <li><strong>Slow Logs:</strong> Adjust index search and indexing slow-log thresholds via <code>PUT /{index}/_settings</code>.</li>
+            <li><strong>Slow Logs:</strong> Current index thresholds are shown above. Adjusting search or indexing slow-log thresholds via <code>PUT /{index}/_settings</code> requires cluster admin privileges.</li>
             <li><strong>Snapshots:</strong> Register snapshot repositories (S3 / shared filesystem), trigger snapshots, and restore indices.</li>
             <li><strong>Replication &amp; Routing:</strong> Change <code>index.number_of_replicas</code> to 0 to turn a single-node cluster green, or assign replicas across multiple nodes.</li>
           </ul>
@@ -416,7 +417,7 @@
       <form class="filters boundary-filters" id="boundaries-form">
         <div class="field field-wide">
           <label for="b-q">Search project / promoter</label>
-          <input id="b-q" type="text" placeholder="e.g. residency, shivalikâ€¦" autocomplete="off" />
+          <input id="b-q" type="text" placeholder="e.g. residency, shivalik…" autocomplete="off" />
         </div>
         <div class="field"><label for="b-district">District</label><select id="b-district"><option value="">All districts</option></select></div>
         <div class="field"><label for="b-taluka">Taluka</label><select id="b-taluka"><option value="">All talukas</option></select></div>
@@ -478,6 +479,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="/static/app.js?v=11"></script>
+  <script src="/static/app.js?v=14"></script>
 </body>
 </html>

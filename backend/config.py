@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     pit_keep_alive: str = "2m"
     pit_ttl_seconds: float = 90
 
+    slowlog_threshold_ms: float = 250
+    slowlog_capacity: int = 100
+
     @property
     def host(self) -> str:
         """Host (scheme-less netloc) safe to show in the browser. No credentials."""

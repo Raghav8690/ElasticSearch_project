@@ -17,6 +17,7 @@ from elasticsearch import BadRequestError, NotFoundError
 from .config import settings
 from .es_client import CAT_INDEX_COLUMNS, ESManager, _safe_reason, flatten_mapping
 from .geometry import boundary_item, haversine_km, matches_geometry, parse_bbox, parse_polygon, parse_radius
+from .slowlog import SlowQueryLog
 from .queries import (
     ADDRESS_SOURCE_PATH,
     EXPORT_BATCH,
@@ -53,6 +54,11 @@ BOUNDARY_CACHE_MAX_ENTRIES = 24
 _boundary_cache: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _boundary_cache_lock = asyncio.Lock()
 
+slow_query_log = SlowQueryLog(
+    capacity=settings.slowlog_capacity,
+    threshold_ms=settings.slowlog_threshold_ms,
+)
+
 
 # -- helpers ---------------------------------------------------------------
 
@@ -65,6 +71,29 @@ def get_es(request: Request) -> ESManager:
 
 def now_ms(start: float) -> float:
     return round((time.perf_counter() - start) * 1000, 2)
+
+
+def record_search(
+    route: str,
+    wall_ms: float,
+    *,
+    method: str = "GET",
+    q: str | None = None,
+    es_took_ms: float | int | None = None,
+    total: int | None = None,
+    returned: int | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    slow_query_log.record(
+        route=route,
+        wall_ms=wall_ms,
+        method=method,
+        q=q,
+        es_took_ms=es_took_ms,
+        total=total,
+        returned=returned,
+        details=details,
+    )
 
 
 def require_index(index: str) -> None:
@@ -646,6 +675,13 @@ async def page_projects(
         "from": body["from"],
         "has_more": len(hits) == body["size"],
     }
+    record_search(
+        "/api/projects/page",
+        wall,
+        es_took_ms=resp.get("took"),
+        returned=len(hits),
+        details={"page": page, "size": body["size"]},
+    )
     return envelope(
         data,
         index=settings.index_rera,
@@ -702,6 +738,13 @@ async def search_after_projects(
     }
     if session:
         data["session_id"] = session
+    record_search(
+        "/api/projects/search-after",
+        wall,
+        es_took_ms=resp.get("took"),
+        returned=len(hits),
+        details={"mode": mode, "size": body["size"]},
+    )
     return envelope(
         data,
         index=settings.index_rera,
@@ -897,6 +940,19 @@ async def search_projects(
 
     wall = now_ms(start)
     data = {"hits": hits}
+    record_search(
+        "/api/projects/search",
+        wall,
+        q=q,
+        es_took_ms=resp.get("took"),
+        total=total,
+        returned=len(hits),
+        details={
+            "query_type": query_type,
+            "fuzzy": fuzzy,
+            "rerank": use_address_rerank,
+        },
+    )
     return envelope(
         data,
         index=settings.index_rera,
@@ -942,7 +998,7 @@ async def suggest_projects(
             source.get("project_name")
             or source.get("promoter_name")
             or source.get("reg_no")
-            or str(project_id or "Ã¢â‚¬â€")
+            or str(project_id or "—")
         )
         meta_parts = [
             source.get("promoter_name"),
@@ -951,7 +1007,7 @@ async def suggest_projects(
             source.get("project_type"),
             source.get("reg_no"),
         ]
-        meta = " Ã‚Â· ".join(str(part) for part in meta_parts if part and str(part) != str(label))
+        meta = " · ".join(str(part) for part in meta_parts if part and str(part) != str(label))
         suggestions.append(
             {
                 "_id": hit.get("_id"),
@@ -969,6 +1025,15 @@ async def suggest_projects(
             }
         )
 
+    record_search(
+        "/api/projects/suggest",
+        wall,
+        q=q,
+        es_took_ms=resp.get("took"),
+        total=len(suggestions),
+        returned=len(suggestions),
+        details={"size": size},
+    )
     return envelope(
         {"suggestions": suggestions},
         index=settings.index_rera,
@@ -994,6 +1059,12 @@ async def project_facets(es: ESManager = Depends(get_es)) -> dict[str, Any]:
     ).body
     wall = now_ms(start)
     aggs = resp.get("aggregations") or {}
+    record_search(
+        "/api/projects/facets",
+        wall,
+        es_took_ms=resp.get("took"),
+        returned=len(aggs),
+    )
     return envelope(
         {"facets": aggs},
         index=settings.index_rera,
@@ -1110,6 +1181,55 @@ async def ops_shards(es: ESManager = Depends(get_es)) -> dict[str, Any]:
     )
 
 
+@router.get("/ops/slowlog")
+async def ops_slowlog(es: ESManager = Depends(get_es)) -> dict[str, Any]:
+    start = time.perf_counter()
+    es_settings: dict[str, Any] = {}
+    settings_error: str | None = None
+    try:
+        resp = (
+            await es.client.indices.get_settings(
+                index=settings.index_rera,
+                name="index.search.slowlog.*",
+                flat_settings=True,
+                include_defaults=True,
+            )
+        ).body
+        node = (resp or {}).get(settings.index_rera) or {}
+        explicit = node.get("settings") or {}
+        defaults = node.get("defaults") or {}
+        merged = {**defaults, **explicit}
+        thresholds = {
+            key: merged.get(f"index.search.slowlog.threshold.{key}")
+            for key in ("query.warn", "query.info", "query.debug", "fetch.warn", "fetch.info")
+        }
+        es_settings = {
+            "level": merged.get("index.search.slowlog.level"),
+            **thresholds,
+            "enabled": any(
+                value not in (None, "-1", -1) for value in thresholds.values()
+            ),
+            "explicit": explicit,
+        }
+    except Exception as exc:  # noqa: BLE001 - Ops must degrade without settings
+        settings_error = _safe_reason(exc)
+
+    data = slow_query_log.snapshot()
+    data["es_settings"] = es_settings
+    data["es_settings_error"] = settings_error
+    return envelope(
+        data,
+        index=settings.index_rera,
+        total=data["count"],
+        returned=data["count"],
+        wall_ms=now_ms(start),
+        query_used={
+            "method": "GET",
+            "path": f"/{settings.index_rera}/_settings/index.search.slowlog.*",
+        },
+    )
+
+
 # -- guarded console -------------------------------------------------------
 ALLOWED_CONSOLE_KEYS = {
     "query", "aggs", "size", "from", "sort", "_source",
@@ -1185,6 +1305,15 @@ async def console_query(
     wall = now_ms(start)
     hits = (resp.get("hits") or {}).get("hits") or []
     total = ((resp.get("hits") or {}).get("total") or {}).get("value")
+    record_search(
+        f"/api/query/{index}",
+        wall,
+        method="POST",
+        es_took_ms=resp.get("took"),
+        total=total if total is not None else len(hits),
+        returned=len(hits),
+        details={"index": index},
+    )
     return envelope(
         resp,
         index=index,
@@ -1294,13 +1423,23 @@ async def project_boundaries(request: Request, es: ESManager = Depends(get_es)) 
         "complete": complete,
         "loaded": loaded,
     }
+    wall = now_ms(start)
+    record_search(
+        "/api/projects/boundaries",
+        wall,
+        q=q_raw,
+        es_took_ms=es_took,
+        total=total,
+        returned=len(features) + len(markers),
+        details={"cache_hit": cache_hit},
+    )
     return envelope(
         data,
         index=settings.index_rera,
         total=total,
         returned=len(features) + len(markers),
         es_took_ms=es_took,
-        wall_ms=now_ms(start),
+        wall_ms=wall,
         query_used={
             "method": "POST",
             "path": f"/{settings.index_rera}/_search",

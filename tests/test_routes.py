@@ -9,7 +9,7 @@ def anyio_backend():
 
 
 @pytest.mark.asyncio
-async def test_all_26_routes_and_root():
+async def test_all_routes_and_root():
     async with lifespan(app):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
@@ -199,7 +199,16 @@ async def test_all_26_routes_and_root():
             r = await client.get("/api/ops/shards")
             assert r.status_code == 200
 
-            # 26. Query Console
+            # 26. Ops Slow Log
+            r = await client.get("/api/ops/slowlog")
+            assert r.status_code == 200
+            slowlog = r.json()["data"]
+            assert "entries" in slowlog
+            assert "es_settings" in slowlog
+            assert slowlog["count"] >= 1
+            assert any(entry["route"] == "/api/projects/search" for entry in slowlog["entries"])
+
+            # 27. Query Console
             r = await client.post("/api/query/gujrat_rera_data", json={"query": {"match_all": {}}, "size": 1})
             assert r.status_code == 200
 

@@ -287,6 +287,7 @@ geometry lab; it does not imply native Elasticsearch geo fields.
 ### 8. Ops
 - Cluster health and OS / JVM node metrics.
 - Shards breakdown highlighting the unassigned replica shard on single-node setups.
+- Search slow log: recent API searches with wall/ES timings, slow-query flags, and current Elasticsearch slow-log thresholds.
 - **P13 Operational Runbook**: Administrative procedures (users, roles, API keys, snapshot/restore, slow logs) documented as a safe reference guide.
 
 ### 9. Guarded Query Console
@@ -345,6 +346,7 @@ All endpoints are hosted under `/api` and return standardized envelopes:
 | **Ops** | `GET /api/ops/health` | Raw cluster health status |
 | | `GET /api/ops/nodes` | JVM heap, CPU, memory, and thread-pool metrics |
 | | `GET /api/ops/shards` | Cat shards showing primary/replica allocation status |
+| | `GET /api/ops/slowlog` | Recent search requests and ES slow-log threshold settings |
 | **Console** | `POST /api/query/{index}` | Guarded Query DSL runner with recursive allowlist |
 
 ---

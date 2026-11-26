@@ -109,7 +109,7 @@ function kpi(label, value, cls, sub) {
     "div",
     { class: "kpi" },
     h("div", { class: "kpi-label", text: label }),
-    h("div", { class: `kpi-value ${cls || ""}`, text: value == null ? "Ã¢â‚¬â€" : String(value) }),
+    h("div", { class: `kpi-value ${cls || ""}`, text: value == null ? "—" : String(value) }),
     h("div", { class: "kpi-sub", text: sub || "" })
   );
 }
@@ -119,7 +119,7 @@ function kv(label, value, mono) {
     "div",
     { class: "kv" },
     h("span", { class: "k", text: label }),
-    h("span", { class: `v ${mono ? "mono" : ""}`, text: value == null ? "Ã¢â‚¬â€" : String(value) })
+    h("span", { class: `v ${mono ? "mono" : ""}`, text: value == null ? "—" : String(value) })
   );
 }
 
@@ -199,7 +199,7 @@ function setStatusPill(status) {
     if (s === "green") label.textContent = "healthy";
     else if (s === "yellow") label.textContent = "yellow";
     else if (s === "red") label.textContent = "offline";
-    else label.textContent = "checkingÃ¢â‚¬Â¦";
+    else label.textContent = "checking…";
   }
 }
 
@@ -221,10 +221,10 @@ function indexCard(idx, status) {
       "div",
       { class: "kv-grid" },
       kv("Index", idx.index, true),
-      kv("Documents", idx.docs != null ? Number(idx.docs).toLocaleString() : "Ã¢â‚¬â€"),
-      kv("Store size", idx.store || "Ã¢â‚¬â€"),
-      kv("Shards", `${idx.pri ?? "Ã¢â‚¬â€"} primary / ${idx.rep ?? "Ã¢â‚¬â€"} replica`),
-      kv("Index status", idx.status || "Ã¢â‚¬â€"),
+      kv("Documents", idx.docs != null ? Number(idx.docs).toLocaleString() : "—"),
+      kv("Store size", idx.store || "—"),
+      kv("Shards", `${idx.pri ?? "—"} primary / ${idx.rep ?? "—"} replica`),
+      kv("Index status", idx.status || "—"),
       kv("Cluster status", status),
       kv("Configured", idx.configured ? "yes" : "no")
     )
@@ -303,22 +303,22 @@ function renderDashboard(root, ctx) {
       { class: "kpi-grid" },
       kpi(
         "Documents",
-        idx && idx.docs != null ? Number(idx.docs).toLocaleString() : "Ã¢â‚¬â€",
+        idx && idx.docs != null ? Number(idx.docs).toLocaleString() : "—",
         "",
         "in the configured index"
       ),
-      kpi("Store size", idx && idx.store ? idx.store : "Ã¢â‚¬â€", "", "configured index storage"),
+      kpi("Store size", idx && idx.store ? idx.store : "—", "", "configured index storage"),
       kpi(
         "Primary shards",
-        idx && idx.pri != null ? idx.pri : "Ã¢â‚¬â€",
+        idx && idx.pri != null ? idx.pri : "—",
         "",
-        `${idx && idx.rep != null ? idx.rep : "Ã¢â‚¬â€"} replica(s) configured`
+        `${idx && idx.rep != null ? idx.rep : "—"} replica(s) configured`
       ),
       kpi(
         "Unassigned shards",
-        health.unassigned_shards ?? "Ã¢â‚¬â€",
+        health.unassigned_shards ?? "—",
         health.unassigned_shards ? "is-warn" : "is-green",
-        `${health.active_primary_shards ?? "Ã¢â‚¬â€"} active primaries Ã‚Â· cluster ${status}`
+        `${health.active_primary_shards ?? "—"} active primaries · cluster ${status}`
       )
     ),
     h("div", { class: "grid-2" }, indexCard(idx, status), yellowCard(health)),
@@ -336,7 +336,7 @@ function renderDashboard(root, ctx) {
         h(
           "ul",
           {},
-          ...errs.map(([key, value]) => h("li", {}, h("code", { text: key }), ` Ã¢â‚¬â€ ${value}`))
+          ...errs.map(([key, value]) => h("li", {}, h("code", { text: key }), ` — ${value}`))
         )
       )
     );
@@ -350,7 +350,7 @@ async function loadDashboard(force = false) {
   const body = document.getElementById("dashboard-body");
   if (!body) return;
   if (!state.dashboardLoaded || force) {
-    body.replaceChildren(loading("Loading cluster factsÃ¢â‚¬Â¦"));
+    body.replaceChildren(loading("Loading cluster facts…"));
   }
   const [health, config, caps] = await Promise.allSettled([
     API.get("/api/health"),
@@ -404,7 +404,7 @@ function queryDetails(queryUsed, label = "Query used") {
 
 function renderHighlighted(text, fragments) {
   const raw = Array.isArray(fragments) && fragments.length ? fragments[0] : text;
-  if (raw == null) return document.createTextNode("Ã¢â‚¬â€");
+  if (raw == null) return document.createTextNode("—");
   const parts = [];
   const regex = /\[\[HL\]\]([\s\S]*?)\[\[\/HL\]\]/g;
   let last = 0;
@@ -483,21 +483,21 @@ function resultsTable(hits) {
   const columns = ["ID", "Project", "District", "Taluka", "Type", "Status", "Price", "Start", "End", "Docs"];
   const rows = hits.map((hit) => {
     const docs = hit.scrape_status && hit.scrape_status.documents;
-    const name = hit.project_name || "Ã¢â‚¬â€";
+    const name = hit.project_name || "—";
     const open = () => openDetail(hit._id || hit.projectId);
     return h(
       "tr",
       { class: "row-click", onclick: open },
-      h("td", { class: "mono", text: String(hit._id || hit.projectId || "Ã¢â‚¬â€") }),
+      h("td", { class: "mono", text: String(hit._id || hit.projectId || "—") }),
       h("td", { class: "truncate", title: String(name) }, renderHighlighted(hit.project_name, hit.highlight && hit.highlight.project_name)),
-      h("td", { text: hit.district || "Ã¢â‚¬â€" }),
-      h("td", { text: hit.taluka || "Ã¢â‚¬â€" }),
-      h("td", { text: hit.project_type || "Ã¢â‚¬â€" }),
-      h("td", { text: hit.project_status || "Ã¢â‚¬â€" }),
-      h("td", { class: "num", text: hit.price || "Ã¢â‚¬â€" }),
-      h("td", { text: hit.start_date || "Ã¢â‚¬â€" }),
-      h("td", { text: hit.end_date || "Ã¢â‚¬â€" }),
-      h("td", { class: "num", text: docs == null ? "Ã¢â‚¬â€" : String(docs) })
+      h("td", { text: hit.district || "—" }),
+      h("td", { text: hit.taluka || "—" }),
+      h("td", { text: hit.project_type || "—" }),
+      h("td", { text: hit.project_status || "—" }),
+      h("td", { class: "num", text: hit.price || "—" }),
+      h("td", { text: hit.start_date || "—" }),
+      h("td", { text: hit.end_date || "—" }),
+      h("td", { class: "num", text: docs == null ? "—" : String(docs) })
     );
   });
   return h(
@@ -652,10 +652,10 @@ function initSuggest() {
                 "aria-selected": "false",
                 onclick: () => choose(item),
               },
-              h("span", { class: "suggest-name", text: item.label || item.project_name || "Ã¢â‚¬â€" }),
+              h("span", { class: "suggest-name", text: item.label || item.project_name || "—" }),
               h("span", {
                 class: "suggest-meta",
-                text: [item.match_label, item.meta].filter(Boolean).join(" Ã‚Â· "),
+                text: [item.match_label, item.meta].filter(Boolean).join(" · "),
               })
             )
           )
@@ -703,7 +703,7 @@ function isComplex(value) {
 }
 
 function renderPrimitive(value) {
-  if (value === null || value === undefined) return document.createTextNode("Ã¢â‚¬â€");
+  if (value === null || value === undefined) return document.createTextNode("—");
   if (typeof value === "string" && isSafeUrl(value)) {
     return h("a", { href: value, target: "_blank", rel: "noopener noreferrer", text: value });
   }
@@ -717,9 +717,9 @@ function summaryFor(value) {
 
 function renderValue(value, depth = 0) {
   if (isPrimitive(value)) return renderPrimitive(value);
-  if (depth > 7) return h("span", { class: "muted", text: "Ã¢â‚¬Â¦" });
+  if (depth > 7) return h("span", { class: "muted", text: "…" });
   if (Array.isArray(value)) {
-    if (!value.length) return document.createTextNode("Ã¢â‚¬â€");
+    if (!value.length) return document.createTextNode("—");
     if (value.every(isPrimitive)) {
       return document.createTextNode(value.map((v) => (v == null ? "" : String(v))).join(", "));
     }
@@ -874,7 +874,7 @@ function renderDetail(root, res) {
     mapLink(sections),
     h("p", {
       class: "muted small",
-      text: `Lookup: ${data.lookup || "get_doc"} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`,
+      text: `Lookup: ${data.lookup || "get_doc"} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
     })
   );
 
@@ -888,7 +888,7 @@ function renderDetail(root, res) {
 async function loadDetail(projectId) {
   const body = document.getElementById("detail-body");
   if (!body) return;
-  body.replaceChildren(loading(`Loading project ${projectId}Ã¢â‚¬Â¦`));
+  body.replaceChildren(loading(`Loading project ${projectId}…`));
   try {
     const res = await API.get(`/api/projects/${encodeURIComponent(projectId)}`);
     renderDetail(body, res);
@@ -1056,7 +1056,7 @@ function boolCount(buckets, truthy) {
 }
 
 function fmtNumber(value) {
-  return value == null ? "Ã¢â‚¬â€" : Number(value).toLocaleString();
+  return value == null ? "—" : Number(value).toLocaleString();
 }
 
 const TOTAL_HIT_CAP = 10000;
@@ -1091,7 +1091,7 @@ function renderAnalytics(root, ctx) {
       "div",
       { class: "kpi-grid" },
       kpi("Documents", fmtNumber(stats.count), "", "documents field present"),
-      kpi("Average documents", stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€", "", "per project"),
+      kpi("Average documents", stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—", "", "per project"),
       kpi("Max documents", fmtNumber(stats.max), "", "single project"),
       kpi("Docs downloaded", fmtNumber(boolCount(downloaded, true)), "", "scrape_status.docs_downloaded")
     )
@@ -1132,7 +1132,7 @@ async function loadAnalytics(force = false) {
   const body = document.getElementById("analytics-body");
   if (!body) return;
   if (analyticsLoaded && !force) return;
-  body.replaceChildren(loading("Loading analyticsÃ¢â‚¬Â¦"));
+  body.replaceChildren(loading("Loading analytics…"));
   const [overview, dates] = await Promise.allSettled([
     API.get("/api/analytics/overview"),
     API.get("/api/analytics/dates"),
@@ -1167,7 +1167,7 @@ function missingCard(missing, total) {
       {},
         h("td", {}, h("code", { text: label })),
         h("td", { class: "num", text: fmtNumber(count) }),
-        h("td", { class: "num", text: pct != null ? `${pct.toFixed(2)}%` : "Ã¢â‚¬â€" })
+        h("td", { class: "num", text: pct != null ? `${pct.toFixed(2)}%` : "—" })
     );
   });
   return h(
@@ -1203,7 +1203,7 @@ function scrapeCard(aggs) {
       kv("Docs with errors", fmtNumber(errors)),
       kv("documents count", fmtNumber(stats.count)),
       kv("min / max", `${fmtNumber(stats.min)} / ${fmtNumber(stats.max)}`),
-      kv("avg / sum", `${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€"} / ${fmtNumber(stats.sum)}`)
+      kv("avg / sum", `${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—"} / ${fmtNumber(stats.sum)}`)
     )
   );
 }
@@ -1274,7 +1274,7 @@ function renderQuality(res) {
       ),
       h("p", {
         class: "muted small",
-        text: `es_took_ms ${(res.meta || {}).es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${(res.meta || {}).wall_ms ?? "Ã¢â‚¬â€"} Ã‚Â· avg documents ${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "Ã¢â‚¬â€"}`,
+        text: `es_took_ms ${(res.meta || {}).es_took_ms ?? "—"} · wall_ms ${(res.meta || {}).wall_ms ?? "—"} · avg documents ${stats.avg != null ? Math.round(stats.avg).toLocaleString() : "—"}`,
       })
     );
   }
@@ -1303,7 +1303,7 @@ async function loadQuality(force = false) {
   const summary = document.getElementById("quality-summary");
   if (!summary) return;
   if (qualityLoaded && !force) return;
-  summary.replaceChildren(loading("Loading quality checksÃ¢â‚¬Â¦"));
+  summary.replaceChildren(loading("Loading quality checks…"));
   try {
     const res = await API.get("/api/quality/scrape");
     renderQuality(res);
@@ -1318,14 +1318,14 @@ async function runPipeline() {
   const out = document.getElementById("pipeline-output");
   if (!out || !input || !validateJsonInput(input, "pipeline-error", "Pipeline source JSON")) return;
   const source = JSON.parse(input.value);
-  out.replaceChildren(loading("SimulatingÃ¢â‚¬Â¦"));
+  out.replaceChildren(loading("Simulating…"));
   try {
     const res = await API.post("/api/quality/pipeline-simulate", { source });
     const data = res.data || {};
     out.replaceChildren(
       h("p", {
         class: "muted small",
-        text: `Pipeline: ${data.pipeline_id || "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${(res.meta || {}).wall_ms ?? "Ã¢â‚¬â€"}`,
+        text: `Pipeline: ${data.pipeline_id || "—"} · wall_ms ${(res.meta || {}).wall_ms ?? "—"}`,
       }),
       queryDetails(data.result || {}, "Simulation result"),
       queryDetails((res.meta || {}).query_used)
@@ -1373,12 +1373,12 @@ function pagTable(hits) {
           h(
             "tr",
             {},
-            h("td", {}, h("span", { class: "mono", text: String(hit.projectId || hit._id || "Ã¢â‚¬â€") })),
-            h("td", { text: hit.project_name || "Ã¢â‚¬â€" }),
-            h("td", { text: hit.district || "Ã¢â‚¬â€" }),
-            h("td", { text: hit.project_type || "Ã¢â‚¬â€" }),
-            h("td", { text: hit.project_status || "Ã¢â‚¬â€" }),
-            h("td", { text: hit.price || "Ã¢â‚¬â€" })
+            h("td", {}, h("span", { class: "mono", text: String(hit.projectId || hit._id || "—") })),
+            h("td", { text: hit.project_name || "—" }),
+            h("td", { text: hit.district || "—" }),
+            h("td", { text: hit.project_type || "—" }),
+            h("td", { text: hit.project_status || "—" }),
+            h("td", { text: hit.price || "—" })
           )
         )
       )
@@ -1394,7 +1394,7 @@ async function pagFromSize() {
   const results = document.getElementById("pag-from-results");
   const queryEl = document.getElementById("pag-from-query");
   if (!results) return;
-  results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
+  results.replaceChildren(loading("Loading…"));
   try {
     const res = await API.get("/api/projects/page", { page, size });
     const data = res.data || {};
@@ -1402,7 +1402,7 @@ async function pagFromSize() {
     results.replaceChildren(
       h("p", {
           class: "muted small mb-8",
-        text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`,
+        text: `page=${data.page} from=${data.from} returned=${meta.returned} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`,
       }),
       pagTable(data.hits)
     );
@@ -1417,7 +1417,7 @@ async function pagSearchAfter() {
   const info = document.getElementById("pag-cursor-info");
   const queryEl = document.getElementById("pag-cursor-query");
   if (!results) return;
-  results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
+  results.replaceChildren(loading("Loading…"));
   try {
     const params = { size: 100 };
     if (pagCursor) params.cursor = JSON.stringify(pagCursor);
@@ -1426,7 +1426,7 @@ async function pagSearchAfter() {
     const meta = res.meta || {};
     pagCursor = data.next_cursor;
     if (info) {
-      info.textContent = `cursor=${JSON.stringify(pagCursor)} has_more=${data.has_more} mode=${data.mode} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`;
+      info.textContent = `cursor=${JSON.stringify(pagCursor)} has_more=${data.has_more} mode=${data.mode} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
     }
     results.replaceChildren(pagTable(data.hits));
     if (queryEl) queryEl.replaceChildren(queryDetails(meta.query_used, "search_after query"));
@@ -1444,7 +1444,7 @@ function setPitStatus(text, cls) {
 
 async function pitOpen() {
   const info = document.getElementById("pit-info");
-  if (info) info.textContent = "Opening PIT sessionÃ¢â‚¬Â¦";
+  if (info) info.textContent = "Opening PIT session…";
   setPitStatus("opening", "tag-yellow");
   try {
     const res = await API.post("/api/pit");
@@ -1468,7 +1468,7 @@ async function pitNext() {
     if (info) info.textContent = "No PIT session open. Click 'Open PIT' first.";
     return;
   }
-  if (results) results.replaceChildren(loading("LoadingÃ¢â‚¬Â¦"));
+  if (results) results.replaceChildren(loading("Loading…"));
   try {
     const params = { size: 100, session: pitSessionId, pit: true };
     if (pitCursor) params.cursor = JSON.stringify(pitCursor);
@@ -1477,7 +1477,7 @@ async function pitNext() {
     const meta = res.meta || {};
     pitCursor = data.next_cursor;
     if (info) {
-      info.textContent = `PIT session=${pitSessionId} cursor=${JSON.stringify(pitCursor)} has_more=${data.has_more} Ã‚Â· es_took_ms ${meta.es_took_ms ?? "Ã¢â‚¬â€"} Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}`;
+      info.textContent = `PIT session=${pitSessionId} cursor=${JSON.stringify(pitCursor)} has_more=${data.has_more} · es_took_ms ${meta.es_took_ms ?? "—"} · wall_ms ${meta.wall_ms ?? "—"}`;
     }
     if (results) results.replaceChildren(pagTable(data.hits));
   } catch (err) {
@@ -1537,7 +1537,7 @@ async function runAnalyze() {
   } else {
     payload.analyzer = "standard";
   }
-  out.replaceChildren(loading("AnalyzingÃ¢â‚¬Â¦"));
+  out.replaceChildren(loading("Analyzing…"));
   try {
     const res = await API.post("/api/analyze", payload);
     const tokens = (res.data && res.data.tokens) || [];
@@ -1580,7 +1580,7 @@ async function loadMapping(force = false) {
   const aliasesEl = document.getElementById("mapping-aliases");
   const explainEl = document.getElementById("mapping-explain");
   const queryEl = document.getElementById("mapping-query");
-  if (statsEl) statsEl.replaceChildren(loading("Loading mapping & statsÃ¢â‚¬Â¦"));
+  if (statsEl) statsEl.replaceChildren(loading("Loading mapping & stats…"));
 
   const index = "gujrat_rera_data";
   const [mappingRes, statsRes, aliasesRes] = await Promise.allSettled([
@@ -1597,7 +1597,7 @@ async function loadMapping(force = false) {
           "div",
           { class: "kpi-grid" },
           kpi("Documents", fmtNumber(sd.docs), "", "total primary count"),
-          kpi("Store", sd.store_bytes != null ? `${(sd.store_bytes / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€", "", "storage size"),
+          kpi("Store", sd.store_bytes != null ? `${(sd.store_bytes / 1048576).toFixed(1)} MB` : "—", "", "storage size"),
           kpi("Segments", fmtNumber(sd.segments), "", "searchable segments"),
           kpi("Total queries", fmtNumber(sd.search && sd.search.query_total), "", "search queries executed")
         )
@@ -1642,14 +1642,14 @@ async function loadMapping(force = false) {
                     { class: f.indexed ? "" : "row-disabled" },
                     h("td", {}, h("code", { text: f.field })),
                     h("td", { text: f.type || "object" }),
-                    h("td", { text: f.indexed ? "Ã¢Å“â€œ true" : "Ã¢Å“â€” false (stored only)" }),
-                    h("td", { text: f.enabled !== false ? "Ã¢Å“â€œ true" : "Ã¢Å“â€” false" })
+                    h("td", { text: f.indexed ? "✓ true" : "✗ false (stored only)" }),
+                    h("td", { text: f.enabled !== false ? "✓ true" : "✗ false" })
                   )
                 )
               )
             )
           ),
-          h("p", { class: "muted small mt-8", text: `Indexed fields are queryable; non-indexed objects exist only in _source Ã‚Â· wall_ms ${meta.wall_ms ?? "Ã¢â‚¬â€"}` })
+          h("p", { class: "muted small mt-8", text: `Indexed fields are queryable; non-indexed objects exist only in _source · wall_ms ${meta.wall_ms ?? "—"}` })
         )
       );
     } else {
@@ -1700,18 +1700,21 @@ async function loadMapping(force = false) {
 
 /* ---------- ops ---------- */
 let opsLoaded = false;
+let shardsShowAll = false;
 
 async function loadOps(force = false) {
   if (opsLoaded && !force) return;
   const healthEl = document.getElementById("ops-health");
   const nodesEl = document.getElementById("ops-nodes");
   const shardsEl = document.getElementById("ops-shards");
-  if (healthEl) healthEl.replaceChildren(loading("Loading ops healthÃ¢â‚¬Â¦"));
+  const slowlogEl = document.getElementById("ops-slowlog");
+  if (healthEl) healthEl.replaceChildren(loading("Loading ops health…"));
 
-  const [healthRes, nodesRes, shardsRes] = await Promise.allSettled([
+  const [healthRes, nodesRes, shardsRes, slowlogRes] = await Promise.allSettled([
     API.get("/api/ops/health"),
     API.get("/api/ops/nodes"),
     API.get("/api/ops/shards"),
+    API.get("/api/ops/slowlog"),
   ]);
 
   if (healthEl) {
@@ -1730,8 +1733,8 @@ async function loadOps(force = false) {
           h(
             "div",
             { class: "kv-grid" },
-            kv("Cluster name", hd.cluster_name || "Ã¢â‚¬â€"),
-            kv("Status", hd.status || "Ã¢â‚¬â€"),
+            kv("Cluster name", hd.cluster_name || "—"),
+            kv("Status", hd.status || "—"),
             kv("Nodes count", hd.number_of_nodes),
             kv("Active primary shards", hd.active_primary_shards),
             kv("Active total shards", hd.active_shards),
@@ -1773,12 +1776,12 @@ async function loadOps(force = false) {
                     h(
                       "tr",
                       {},
-                      h("td", { text: n.name || "Ã¢â‚¬â€" }),
-                      h("td", { text: Array.isArray(n.roles) ? n.roles.join(", ") : String(n.roles || "Ã¢â‚¬â€") }),
-                      h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "Ã¢â‚¬â€" }),
-                      h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "Ã¢â‚¬â€" }),
+                      h("td", { text: n.name || "—" }),
+                      h("td", { text: Array.isArray(n.roles) ? n.roles.join(", ") : String(n.roles || "—") }),
+                      h("td", { text: n.heap_percent != null ? `${n.heap_percent}%` : "—" }),
+                      h("td", { text: n.cpu_percent != null ? `${n.cpu_percent}%` : "—" }),
                       h("td", { text: fmtNumber(n.docs) }),
-                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "Ã¢â‚¬â€" }),
+                      h("td", { text: n.store ? `${(n.store / 1048576).toFixed(1)} MB` : "—" }),
                       h("td", { text: fmtNumber(n.search_queue) }),
                       h("td", { text: fmtNumber(n.search_rejected) }),
                       h("td", { text: fmtHitRate(n.query_cache_hit_count, n.query_cache_miss_count) }),
@@ -1801,45 +1804,164 @@ async function loadOps(force = false) {
   if (shardsEl) {
     if (shardsRes.status === "fulfilled") {
       const sd = (shardsRes.value.data && shardsRes.value.data.shards) || [];
-      shardsEl.replaceChildren(
-        h(
-          "div",
-          { class: "card" },
-          h("div", { class: "card-head" }, h("h3", { text: "Shards Allocation" }), h("span", { class: "tag tag-muted", text: `${sd.length} shards total` })),
+      const shardIndex = ((shardsRes.value.data || {}).meta || {}).index || "gujrat_rera_data";
+      const renderShards = () => {
+        const shown = shardsShowAll ? sd : sd.filter((s) => s.index === shardIndex);
+        shardsEl.replaceChildren(
           h(
             "div",
-            { class: "table-wrap" },
+            { class: "card" },
             h(
-              "table",
-              { class: "data-table compact" },
+              "div",
+              { class: "card-head" },
+              h("h3", { text: "Shards Allocation" }),
+              h("span", { class: "tag tag-muted", text: shardsShowAll ? `${sd.length} shards total` : `${shown.length} of ${sd.length} shards` }),
               h(
-                "thead",
-                {},
-                h("tr", {}, h("th", { text: "Index" }), h("th", { text: "Shard" }), h("th", { text: "Type" }), h("th", { text: "State" }), h("th", { text: "Docs" }), h("th", { text: "Store" }), h("th", { text: "Node" }))
-              ),
+                "button",
+                { class: "btn btn-ghost", type: "button", "data-action": "toggle-shards", text: shardsShowAll ? "Show current index" : "See all" }
+              )
+            ),
+            h(
+              "div",
+              { class: "table-wrap" },
               h(
-                "tbody",
-                {},
-                ...sd.map((s) =>
-                  h(
-                    "tr",
-                    { class: s.state === "UNASSIGNED" ? "row-unassigned" : "" },
-                    h("td", {}, h("code", { text: s.index || "Ã¢â‚¬â€" })),
-                    h("td", { text: s.shard ?? "Ã¢â‚¬â€" }),
-                    h("td", { text: s.prirep === "p" ? "primary" : s.prirep === "r" ? "replica" : s.prirep }),
-                    h("td", { text: s.state || "Ã¢â‚¬â€" }),
-                    h("td", { text: s.docs != null ? fmtNumber(s.docs) : "Ã¢â‚¬â€" }),
-                    h("td", { text: s.store || "Ã¢â‚¬â€" }),
-                    h("td", { text: s.node || "unassigned" })
+                "table",
+                { class: "data-table compact" },
+                h(
+                  "thead",
+                  {},
+                  h("tr", {}, h("th", { text: "Index" }), h("th", { text: "Shard" }), h("th", { text: "Type" }), h("th", { text: "State" }), h("th", { text: "Docs" }), h("th", { text: "Store" }), h("th", { text: "Node" }))
+                ),
+                h(
+                  "tbody",
+                  {},
+                  ...shown.map((s) =>
+                    h(
+                      "tr",
+                      { class: s.state === "UNASSIGNED" ? "row-unassigned" : "" },
+                      h("td", {}, h("code", { text: s.index || "—" })),
+                      h("td", { text: s.shard ?? "—" }),
+                      h("td", { text: s.prirep === "p" ? "primary" : s.prirep === "r" ? "replica" : s.prirep }),
+                      h("td", { text: s.state || "—" }),
+                      h("td", { text: s.docs != null ? fmtNumber(s.docs) : "—" }),
+                      h("td", { text: s.store || "—" }),
+                      h("td", { text: s.node || "unassigned" })
+                    )
                   )
                 )
               )
             )
           )
+        );
+        const toggle = shardsEl.querySelector('[data-action="toggle-shards"]');
+        if (toggle) {
+          toggle.addEventListener("click", () => {
+            shardsShowAll = !shardsShowAll;
+            renderShards();
+          });
+        }
+      };
+      renderShards();
+    } else {
+      shardsEl.replaceChildren(errorCard("Shards unavailable", shardsRes.reason));
+    }
+  }
+
+  if (slowlogEl) {
+    if (slowlogRes.status === "fulfilled") {
+      const sl = slowlogRes.value.data || {};
+      const entries = Array.isArray(sl.entries) ? sl.entries : [];
+      const es = sl.es_settings || {};
+      const fmtMs = (value) => (value == null ? "n/a" : `${Number(value).toFixed(2)} ms`);
+      const fmtTime = (value) => {
+        if (!value) return "n/a";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime())
+          ? String(value)
+          : date.toLocaleString([], {
+              month: "short",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: false,
+            });
+      };
+      const modeOf = (entry) => {
+        const details = entry.details || {};
+        if (details.query_type) return `${details.query_type}${details.fuzzy ? " + fuzzy" : ""}`;
+        if (details.mode) return String(details.mode);
+        if (details.page != null) return `page ${details.page}`;
+        if (details.cache_hit != null) return details.cache_hit ? "cache hit" : "cache miss";
+        if (entry.route && entry.route.endsWith("/suggest")) return "suggest";
+        if (entry.route && entry.route.endsWith("/facets")) return "facets";
+        return details.index ? String(details.index) : "n/a";
+      };
+      const esNote = sl.es_settings_error
+        ? `ES slow-log settings unavailable (${sl.es_settings_error}).`
+        : es.enabled
+          ? `ES slow log enabled (level ${es.level || "unknown"}, query warn ${es["query.warn"] || "n/a"}).`
+          : "ES slow log is disabled (query/fetch thresholds are -1).";
+
+      slowlogEl.replaceChildren(
+        h(
+          "div",
+          { class: "card" },
+          h(
+            "div",
+            { class: "card-head" },
+            h("h3", { text: "Search Slow Log" }),
+            h("span", { class: "tag tag-muted", text: `${sl.count ?? entries.length} recent / ${sl.slow_count ?? 0} slow` })
+          ),
+          h("p", { class: "muted small", text: `Recent API searches. Requests at or above ${sl.threshold_ms ?? "n/a"} ms are marked slow. ${esNote}` }),
+          entries.length
+            ? h(
+                "div",
+                { class: "table-wrap" },
+                h(
+                  "table",
+                  { class: "data-table compact" },
+                  h(
+                    "thead",
+                    {},
+                    h(
+                      "tr",
+                      {},
+                      h("th", { text: "Time" }),
+                      h("th", { text: "Route" }),
+                      h("th", { text: "Query" }),
+                      h("th", { text: "Mode" }),
+                      h("th", { class: "num", text: "Wall" }),
+                      h("th", { class: "num", text: "ES took" }),
+                      h("th", { class: "num", text: "Hits" }),
+                      h("th", { text: "State" })
+                    )
+                  ),
+                  h(
+                    "tbody",
+                    {},
+                    ...entries.map((entry) =>
+                      h(
+                        "tr",
+                        { class: entry.slow ? "row-slow" : "" },
+                        h("td", { class: "mono", text: fmtTime(entry.timestamp) }),
+                        h("td", { text: entry.route || "n/a" }),
+                        h("td", { class: "truncate", title: entry.q || "", text: entry.q || "match_all" }),
+                        h("td", { text: modeOf(entry) }),
+                        h("td", { class: "num mono", text: fmtMs(entry.wall_ms) }),
+                        h("td", { class: "num mono", text: fmtMs(entry.es_took_ms) }),
+                        h("td", { class: "num", text: `${entry.total == null ? "n/a" : fmtNumber(entry.total)} / ${fmtNumber(entry.returned)}` }),
+                        h("td", {}, h("span", { class: `tag tag-${entry.slow ? "yellow" : "green"}`, text: entry.slow ? "slow" : "ok" }))
+                      )
+                    )
+                  )
+                )
+              )
+            : h("p", { class: "muted small", text: "No search requests recorded in this session yet." })
         )
       );
     } else {
-      shardsEl.replaceChildren(errorCard("Shards unavailable", shardsRes.reason));
+      slowlogEl.replaceChildren(errorCard("Search slow log unavailable", slowlogRes.reason));
     }
   }
 
@@ -1855,7 +1977,7 @@ async function runConsole() {
   if (!results || !input || !validateJsonInput(input, "console-error", "Query body JSON")) return;
   const body = JSON.parse(input.value);
 
-  results.replaceChildren(loading("Running queryÃ¢â‚¬Â¦"));
+  results.replaceChildren(loading("Running query…"));
   if (metaEl) metaEl.replaceChildren();
   if (queryEl) queryEl.replaceChildren();
 
@@ -1869,8 +1991,8 @@ async function runConsole() {
       metaEl.replaceChildren(
         h("span", { class: "meta-item" }, h("strong", { text: fmtNumber(meta.total) }), " matches"),
         h("span", { class: "meta-item", text: `returned ${meta.returned ?? hits.length}` }),
-        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "Ã¢â‚¬â€")),
-        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "Ã¢â‚¬â€"))
+        h("span", { class: "meta-item" }, h("code", { text: "es_took_ms" }), " ", String(meta.es_took_ms ?? "—")),
+        h("span", { class: "meta-item" }, h("code", { text: "wall_ms" }), " ", String(meta.wall_ms ?? "—"))
       );
     }
 
@@ -2720,7 +2842,7 @@ function initProjects() {
     const value = detailId ? detailId.value.trim() : "";
     if (value) loadDetail(value);
   };
-  if (detailLoad) detailLoad.addEventListener("click", () => withBusy(detailLoad, "LoadingÃ¢â‚¬Â¦", triggerDetail));
+  if (detailLoad) detailLoad.addEventListener("click", () => withBusy(detailLoad, "Loading…", triggerDetail));
   if (detailId) {
     detailId.addEventListener("keydown", (event) => {
       if (event.key === "Enter") { event.preventDefault(); triggerDetail(); }
@@ -2779,21 +2901,21 @@ document.addEventListener("DOMContentLoaded", () => {
   initProjects();
   initBoundaries();
   const refresh = document.getElementById("refresh-dashboard");
-  if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "RefreshingÃ¢â‚¬Â¦", () => loadDashboard(true)));
+  if (refresh) refresh.addEventListener("click", () => withBusy(refresh, "Refreshing…", () => loadDashboard(true)));
   const analyticsRefresh = document.getElementById("analytics-refresh");
-  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => withBusy(analyticsRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadAnalytics(true)));
+  if (analyticsRefresh) analyticsRefresh.addEventListener("click", () => withBusy(analyticsRefresh, "Refreshing…", () => loadAnalytics(true)));
   const qualityRefresh = document.getElementById("quality-refresh");
-  if (qualityRefresh) qualityRefresh.addEventListener("click", () => withBusy(qualityRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadQuality(true)));
+  if (qualityRefresh) qualityRefresh.addEventListener("click", () => withBusy(qualityRefresh, "Refreshing…", () => loadQuality(true)));
   const pipelineInput = document.getElementById("pipeline-source");
   if (pipelineInput) pipelineInput.addEventListener("input", () => validateJsonInput(pipelineInput, "pipeline-error", "Pipeline source JSON"));
   const pipelineRun = document.getElementById("pipeline-run");
-  if (pipelineRun) pipelineRun.addEventListener("click", () => withBusy(pipelineRun, "SimulatingÃ¢â‚¬Â¦", runPipeline));
+  if (pipelineRun) pipelineRun.addEventListener("click", () => withBusy(pipelineRun, "Simulating…", runPipeline));
 
   // Pagination & Export
   const pagGo = document.getElementById("pag-go");
-  if (pagGo) pagGo.addEventListener("click", () => withBusy(pagGo, "LoadingÃ¢â‚¬Â¦", pagFromSize));
+  if (pagGo) pagGo.addEventListener("click", () => withBusy(pagGo, "Loading…", pagFromSize));
   const pagNext = document.getElementById("pag-next");
-  if (pagNext) pagNext.addEventListener("click", () => withBusy(pagNext, "LoadingÃ¢â‚¬Â¦", pagSearchAfter));
+  if (pagNext) pagNext.addEventListener("click", () => withBusy(pagNext, "Loading…", pagSearchAfter));
   const pagCursorReset = document.getElementById("pag-cursor-reset");
   if (pagCursorReset) {
     pagCursorReset.addEventListener("click", () => {
@@ -2804,40 +2926,40 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   const paginationRefresh = document.getElementById("pagination-refresh");
   if (paginationRefresh) {
-    paginationRefresh.addEventListener("click", () => withBusy(paginationRefresh, "RefreshingÃ¢â‚¬Â¦", () => {
+    paginationRefresh.addEventListener("click", () => withBusy(paginationRefresh, "Refreshing…", () => {
       paginationLoaded = false;
       ensurePagination();
     }));
   }
   const pitOpenBtn = document.getElementById("pit-open");
-  if (pitOpenBtn) pitOpenBtn.addEventListener("click", () => withBusy(pitOpenBtn, "OpeningÃ¢â‚¬Â¦", pitOpen));
+  if (pitOpenBtn) pitOpenBtn.addEventListener("click", () => withBusy(pitOpenBtn, "Opening…", pitOpen));
   const pitNextBtn = document.getElementById("pit-next");
-  if (pitNextBtn) pitNextBtn.addEventListener("click", () => withBusy(pitNextBtn, "LoadingÃ¢â‚¬Â¦", pitNext));
+  if (pitNextBtn) pitNextBtn.addEventListener("click", () => withBusy(pitNextBtn, "Loading…", pitNext));
   const pitCloseBtn = document.getElementById("pit-close");
-  if (pitCloseBtn) pitCloseBtn.addEventListener("click", () => withBusy(pitCloseBtn, "ClosingÃ¢â‚¬Â¦", pitClose));
+  if (pitCloseBtn) pitCloseBtn.addEventListener("click", () => withBusy(pitCloseBtn, "Closing…", pitClose));
   const exportLimit = document.getElementById("export-limit");
   if (exportLimit) exportLimit.addEventListener("input", updateExportLink);
 
   // Mapping & Analyze
   const mappingRefresh = document.getElementById("mapping-refresh");
-  if (mappingRefresh) mappingRefresh.addEventListener("click", () => withBusy(mappingRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadMapping(true)));
+  if (mappingRefresh) mappingRefresh.addEventListener("click", () => withBusy(mappingRefresh, "Refreshing…", () => loadMapping(true)));
   const analyzeRun = document.getElementById("analyze-run");
-  if (analyzeRun) analyzeRun.addEventListener("click", () => withBusy(analyzeRun, "AnalyzingÃ¢â‚¬Â¦", runAnalyze));
+  if (analyzeRun) analyzeRun.addEventListener("click", () => withBusy(analyzeRun, "Analyzing…", runAnalyze));
 
   // Ops
   const opsRefresh = document.getElementById("ops-refresh");
-  if (opsRefresh) opsRefresh.addEventListener("click", () => withBusy(opsRefresh, "RefreshingÃ¢â‚¬Â¦", () => loadOps(true)));
+  if (opsRefresh) opsRefresh.addEventListener("click", () => withBusy(opsRefresh, "Refreshing…", () => loadOps(true)));
 
   // Console
   const consoleRun = document.getElementById("console-run");
-  if (consoleRun) consoleRun.addEventListener("click", () => withBusy(consoleRun, "RunningÃ¢â‚¬Â¦", runConsole));
+  if (consoleRun) consoleRun.addEventListener("click", () => withBusy(consoleRun, "Running…", runConsole));
   const consoleInput = document.getElementById("console-input");
   if (consoleInput) {
     consoleInput.addEventListener("input", () => validateJsonInput(consoleInput, "console-error", "Query body JSON"));
     consoleInput.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        withBusy(consoleRun, "RunningÃ¢â‚¬Â¦", runConsole);
+        withBusy(consoleRun, "Running…", runConsole);
       }
     });
   }
