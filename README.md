@@ -236,12 +236,11 @@ geometry lab; it does not imply native Elasticsearch geo fields.
 - Capability badges displaying detected feature availability.
 
 ### 2. Projects
-- **Full-Text Search**: Search by `project_name` (boost ^3) and `promoter_name` (boost ^1) with safe DOM highlight rendering (`[[HL]]` sentinels converted to `<mark>` nodes).
+- **Query Comparison Lab**: Runs two searches in parallel with one phrase across `multi_match`, `match`, `phrase`, and `term`; fuzzy applies only to `multi_match` and `match`.
+- **Side-by-Side Results**: Each panel shows totals, wall/ES timings, result rows, and the generated query DSL.
 - **Prefix Auto-Suggest**: Case-insensitive prefix matching for `plot`, `Plot`, `PLOT`, and `PLot`, with debounced (300 ms, min 2 chars) suggest results.
-- **Filters**: Case-insensitive exact and prefix terms for District, Taluka, Project Type, Project Status, Promoter, Registration Number, and Scrape Status.
-- **Price Constraints**: Exact price selection and prefix search (`prefix` on `price` keyword); strictly prohibits illegal numeric range queries.
-- **Date Ranges**: `start_date` and `end_date` date pickers formatted to `dd-MM-yyyy`.
-- **Facets Sidebar**: Live terms aggregations showing breakdown counts.
+- **Controls**: Query type A/B, fuzzy toggle, address rerank, sort, and page size; defaults are `multi_match` vs `match`, fuzzy on, rerank on, and page size 20.
+- **Safe Highlighting**: Text highlights arrive as `[[HL]]` sentinels and are converted to `<mark>` DOM nodes instead of injected HTML.
 
 ### 3. Project Detail
 - Accessible by clicking any project from the search results or via ID search.
@@ -286,7 +285,7 @@ geometry lab; it does not imply native Elasticsearch geo fields.
 
 ### 8. Ops
 - Cluster health and OS / JVM node metrics.
-- Shards breakdown highlighting the unassigned replica shard on single-node setups.
+- Shards breakdown highlighting the unassigned replica shard on single-node setups; defaults to the configured index with a **See all** toggle for cluster-wide shards.
 - Search slow log: recent API searches with wall/ES timings, slow-query flags, and current Elasticsearch slow-log thresholds.
 - **P13 Operational Runbook**: Administrative procedures (users, roles, API keys, snapshot/restore, slow logs) documented as a safe reference guide.
 
@@ -328,7 +327,7 @@ All endpoints are hosted under `/api` and return standardized envelopes:
 | | `GET /api/indices/{index}/mapping` | Index mapping with indexed vs. unindexed flags |
 | | `GET /api/indices/{index}/stats` | Document counts, store bytes, segment statistics |
 | | `GET /api/indices/{index}/aliases` | Cat aliases filtered to current index |
-| **Projects** | `GET /api/projects/search` | Multi-filter search with highlighting & sorting |
+| **Projects** | `GET /api/projects/search` | Search with `query_type` / `fuzzy` controls, highlighting & sorting |
 | | `GET /api/projects/suggest` | Debounced prefix autocomplete via `match_phrase_prefix` |
 | | `GET /api/projects/boundaries` | Read-only boundary rings with bbox/radius/polygon filters and cached viewport batches |
 | | `GET /api/projects/facets` | Aggregations for dropdown filters and stats |
@@ -360,16 +359,16 @@ This application covers **12 of the 13 Elasticsearch curriculum practicals fully
 | **P1** | Cluster, Nodes & Health | Dashboard & Ops tabs; version 8.19.23, node metrics, yellow status |
 | **P2** | Index Lifecycle & CRUD | Read-only architecture; document retrieval by `_id`, query explanations |
 | **P3** | Mappings & Analyzers | Mapping tab (`dynamic: false`), Analyze panel, text vs keyword comparison |
-| **P4** | Query DSL & Highlights | Projects tab search filters with safe sentinel `[[HL]]` rendering into `<mark>` nodes |
+| **P4** | Query DSL & Highlights | Projects tab A/B query comparison with safe sentinel `[[HL]]` rendering into `<mark>` nodes |
 | **P5** | Bool Queries & Filtering | Strict separation of cached `bool.filter` vs scored `must` multi-match |
 | **P6** | Suggestions & Analyzers | Case-insensitive prefix suggest with `case_insensitive: true` and `match_phrase_prefix` |
-| **P7** | Relevance & Scoring | Multi-match field boosting (`project_name^3`, `promoter_name^1`) |
+| **P7** | Relevance & Scoring | A/B query-type comparison with multi-match boosting and a bounded fuzzy fallback |
 | **P8** | Aggregations & Metrics | Analytics tab charts; terms aggregations, date histograms, stats |
 | **P9** | Data Quality & Ingestion | Missing field detection, casing collisions, pipeline `_simulate` |
 | **P10** | Pagination & Export | `from/size` vs `search_after` vs PIT; streaming CSV export |
 | **P11** | Aliases, Stats & Shards | Mapping & Indices tab; segment stats, aliases, shard replica lesson |
 | **P12** | Geo-spatial Queries | **Partial**: 16,955 usable boundary rings rendered from `_source`; bbox/radius/polygon filtering is client/server geometry, not native ES geo DSL |
-| **P13** | Operations & Administration | Ops tab: node heap, unassigned shards, and administrative runbooks |
+| **P13** | Operations & Administration | Ops tab: node heap, unassigned shards, recent search slow log, and administrative runbooks |
 
 > **Geo boundary note**: native ES `geo_point` / `geo_shape` queries are not
 > available because the mapping has no indexed geo fields and the app never
